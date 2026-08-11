@@ -3,6 +3,8 @@ using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Interface.Windowing;
+using Wikiway.Core.Abstractions;
+using Wikiway.Core.Pipeline;
 using Wikiway.Plugin.Windows;
 
 namespace Wikiway.Plugin;
@@ -20,6 +22,7 @@ public sealed class Plugin : IDalamudPlugin
     private const string CommandAlias = "/wway";
 
     public Configuration Configuration { get; }
+    public IQueryPipeline Pipeline { get; }
     public readonly WindowSystem WindowSystem = new("Wikiway");
 
     private readonly MainWindow mainWindow;
@@ -28,6 +31,9 @@ public sealed class Plugin : IDalamudPlugin
     public Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+
+        // Providers arrive as they're built; the orchestrator handles an empty list fine.
+        Pipeline = new QueryOrchestrator([], new QueryNormalizer(), new ResultRanker());
 
         mainWindow = new MainWindow(this);
         configWindow = new ConfigWindow(this);
