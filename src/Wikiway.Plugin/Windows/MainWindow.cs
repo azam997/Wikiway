@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,6 +7,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
+using Wikiway.Plugin.GameIntegration;
 
 namespace Wikiway.Plugin.Windows;
 
@@ -146,9 +148,59 @@ public class MainWindow : Window, IDisposable
 
     private void DrawEntityCard(EntityCardResult card)
     {
-        ImGui.TextUnformatted(card.Title);
+        switch (card.Entity)
+        {
+            case NpcEntity npc:
+                Header(npc.Name, "NPC");
+                if (npc.Location is { } loc)
+                {
+                    ImGui.TextDisabled($"{loc.ZoneName} ({loc.MapX:0.0}, {loc.MapY:0.0})");
+                    ImGui.SameLine();
+                    if (ImGui.SmallButton($"Flag map##npc{npc.RowId}"))
+                        MapLinkOpener.Open(loc);
+                }
+                break;
+
+            case ItemEntity item:
+                Header(item.Name, item.Category.Length > 0 ? item.Category : "Item");
+                if (item.Description.Length > 0)
+                    ImGui.TextWrapped(item.Description);
+                break;
+
+            case QuestEntity quest:
+                Header(quest.Name, quest.Genre.Length > 0 ? $"Quest · {quest.Genre}" : "Quest");
+                if (quest.ClassJobLevel > 0)
+                    ImGui.TextDisabled($"Level {quest.ClassJobLevel}");
+                if (quest.Prerequisites.Count > 0)
+                    ImGui.TextWrapped("Requires: " + string.Join(", ", quest.Prerequisites.Select(p => p.Name)));
+                break;
+
+            case MountEntity mount:
+                Header(mount.Name, "Mount");
+                break;
+
+            case MinionEntity minion:
+                Header(minion.Name, "Minion");
+                break;
+
+            case AchievementEntity achievement:
+                Header(achievement.Name,
+                    achievement.Category.Length > 0 ? $"Achievement · {achievement.Category}" : "Achievement");
+                if (achievement.Description.Length > 0)
+                    ImGui.TextWrapped(achievement.Description);
+                break;
+
+            default:
+                Header(card.Title, card.Source.Label);
+                break;
+        }
+    }
+
+    private static void Header(string name, string tag)
+    {
+        ImGui.TextUnformatted(name);
         ImGui.SameLine();
-        ImGui.TextDisabled(card.Source.Label);
+        ImGui.TextDisabled(tag);
     }
 
     private void DrawWikiResult(WikiPageResult wiki)

@@ -5,6 +5,8 @@ using Dalamud.Plugin.Services;
 using Dalamud.Interface.Windowing;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Pipeline;
+using Wikiway.Core.Providers;
+using Wikiway.GameData;
 using Wikiway.Plugin.Windows;
 
 namespace Wikiway.Plugin;
@@ -32,8 +34,11 @@ public sealed class Plugin : IDalamudPlugin
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
-        // Providers arrive as they're built; the orchestrator handles an empty list fine.
-        Pipeline = new QueryOrchestrator([], new QueryNormalizer(), new ResultRanker());
+        var gameDataStore = new LuminaGameDataStore(DataManager.GameData);
+        Pipeline = new QueryOrchestrator(
+            [new LocalGameDataProvider(gameDataStore)],
+            new QueryNormalizer(),
+            new ResultRanker());
 
         mainWindow = new MainWindow(this);
         configWindow = new ConfigWindow(this);
