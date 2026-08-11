@@ -24,7 +24,7 @@ environment variable).
 
 1. Launch the game through XIVLauncher.
 2. `/xlsettings` → Experimental → Dev Plugin Locations → add the full path to
-   `src\Wikiway.Plugin\bin\Debug\Wikiway.Plugin.dll`, save.
+   `src\Wikiway.Plugin\bin\Debug\Wikiway.dll`, save.
 3. `/xlplugins` → Dev Tools → Installed Dev Plugins → enable Wikiway.
 4. After a rebuild, reload the plugin from the same list. Logs are in `/xllog`.
 
@@ -53,6 +53,15 @@ The canary suite is the early-warning system for things that break under us:
    `tests\Wikiway.Canary.Tests\Wikiway.Canary.Tests.csproj`.
 3. `scripts\run-tests.ps1`, then `scripts\run-canaries.ps1`.
 4. Load in-game and try a couple of queries.
+
+## Packaging
+
+`dotnet build src\Wikiway.Plugin -c Release` produces the distributable zip at
+`src\Wikiway.Plugin\bin\Release\Wikiway\latest.zip` via DalamudPackager. Clean
+the bin folder first if you've built Release before - stale packager output
+gets swept into the zip otherwise. Submission to the official repo goes
+through a PR against [goatcorp/DalamudPluginsD17](https://github.com/goatcorp/DalamudPluginsD17)
+once the plugin has had some real-world soak time.
 
 ## Layout
 
