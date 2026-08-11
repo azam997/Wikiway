@@ -43,7 +43,30 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
             });
         }
 
+        if (results.Count > 0 && results[0] is WikiPageResult best)
+        {
+            try
+            {
+                var lead = await client.GetLeadSectionHtmlAsync(best.Title, ct).ConfigureAwait(false);
+                if (lead != null)
+                    results[0] = best with { Lead = Truncate(HtmlText.Strip(lead), 700) };
+            }
+            catch (HttpRequestException)
+            {
+                // The lead paragraph is a bonus; the hit stands on its own.
+            }
+        }
+
         return new ProviderResult(Id, results, ProviderStatus.Ok);
+    }
+
+    private static string Truncate(string text, int max)
+    {
+        if (text.Length <= max)
+            return text;
+
+        var cut = text.LastIndexOf(' ', max);
+        return text[..(cut > 0 ? cut : max)] + " …";
     }
 
     public async Task<RetrievedDocument?> RetrieveAsync(SearchResult hit, CancellationToken ct)

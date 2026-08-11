@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Http;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
@@ -5,6 +6,7 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Interface.Windowing;
 using Wikiway.Core.Abstractions;
+using Wikiway.Core.Caching;
 using Wikiway.Core.Pipeline;
 using Wikiway.Core.Providers;
 using Wikiway.Core.Wiki;
@@ -27,6 +29,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public Configuration Configuration { get; }
     public IQueryPipeline Pipeline { get; }
+    public ICacheStore CacheStore { get; }
     public readonly WindowSystem WindowSystem = new("Wikiway");
 
     private readonly MainWindow mainWindow;
@@ -37,7 +40,11 @@ public sealed class Plugin : IDalamudPlugin
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
-        httpClient = new HttpClient();
+        CacheStore = new FileCacheStore(Path.Combine(PluginInterface.GetPluginConfigDirectory(), "cache"));
+        httpClient = new HttpClient(new CachingHandler(CacheStore)
+        {
+            InnerHandler = new ThrottlingHandler { InnerHandler = new HttpClientHandler() },
+        });
         var wikiClient = new ConsoleGamesWikiClient(httpClient);
         var gameDataStore = new LuminaGameDataStore(DataManager.GameData);
 

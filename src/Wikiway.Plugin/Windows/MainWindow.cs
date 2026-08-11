@@ -211,7 +211,9 @@ public class MainWindow : Window, IDisposable
         ImGui.SameLine();
         if (ImGui.SmallButton($"Open##wiki{wiki.Title}"))
             BrowserOpener.Open(wiki.PageUrl);
-        if (wiki.Snippet != null)
+        if (wiki.Lead != null)
+            ImGui.TextWrapped(wiki.Lead);
+        else if (wiki.Snippet != null)
             ImGui.TextWrapped(wiki.Snippet);
     }
 

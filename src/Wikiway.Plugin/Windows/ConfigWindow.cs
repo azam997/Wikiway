@@ -1,4 +1,6 @@
 using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
 
@@ -6,13 +8,15 @@ namespace Wikiway.Plugin.Windows;
 
 public class ConfigWindow : Window
 {
+    private readonly Plugin plugin;
     private readonly Configuration config;
 
     public ConfigWindow(Plugin plugin) : base("Wikiway Settings")
     {
+        this.plugin = plugin;
         config = plugin.Configuration;
 
-        Size = new Vector2(320, 140);
+        Size = new Vector2(340, 170);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -32,5 +36,9 @@ public class ConfigWindow : Window
             config.MaxWikiResults = maxResults;
             config.Save();
         }
+
+        ImGui.Separator();
+        if (ImGui.Button("Clear wiki cache"))
+            _ = Task.Run(() => plugin.CacheStore.ClearAsync(CancellationToken.None));
     }
 }

@@ -23,5 +23,5 @@ public sealed record WikiPageResult : SearchResult
 
     public string? Snippet { get; init; }
 
-    public string? LeadSectionHtml { get; init; }
+    public string? Lead { get; init; }
 }

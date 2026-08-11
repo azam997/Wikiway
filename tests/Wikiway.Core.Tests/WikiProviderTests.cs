@@ -29,6 +29,21 @@ public class WikiProviderTests
     }
 
     [Fact]
+    public async Task TopHitGetsALeadParagraph()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
+            new WikiSearchHit("First", 1, ""),
+            new WikiSearchHit("Second", 2, "")));
+
+        var result = await provider.SearchAsync(Query("first"), CancellationToken.None);
+
+        var first = Assert.IsType<WikiPageResult>(result.Results[0]);
+        var second = Assert.IsType<WikiPageResult>(result.Results[1]);
+        Assert.Equal("lead of First", first.Lead);
+        Assert.Null(second.Lead);
+    }
+
+    [Fact]
     public void DisabledInConfigMeansUnavailable()
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(), enabled: () => false);
