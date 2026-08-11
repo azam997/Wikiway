@@ -208,6 +208,9 @@ public class MainWindow : Window, IDisposable
         ImGui.TextUnformatted(wiki.Title);
         ImGui.SameLine();
         ImGui.TextDisabled(wiki.Source.Label);
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"Open##wiki{wiki.Title}"))
+            BrowserOpener.Open(wiki.PageUrl);
         if (wiki.Snippet != null)
             ImGui.TextWrapped(wiki.Snippet);
     }

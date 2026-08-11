@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -6,6 +7,7 @@ using Dalamud.Interface.Windowing;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Pipeline;
 using Wikiway.Core.Providers;
+using Wikiway.Core.Wiki;
 using Wikiway.GameData;
 using Wikiway.Plugin.Windows;
 
@@ -29,14 +31,24 @@ public sealed class Plugin : IDalamudPlugin
 
     private readonly MainWindow mainWindow;
     private readonly ConfigWindow configWindow;
+    private readonly HttpClient httpClient;
 
     public Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
+        httpClient = new HttpClient();
+        var wikiClient = new ConsoleGamesWikiClient(httpClient);
         var gameDataStore = new LuminaGameDataStore(DataManager.GameData);
+
         Pipeline = new QueryOrchestrator(
-            [new LocalGameDataProvider(gameDataStore)],
+            [
+                new LocalGameDataProvider(gameDataStore),
+                new ConsoleGamesWikiProvider(
+                    wikiClient,
+                    () => Configuration.WikiSearchEnabled,
+                    () => Configuration.MaxWikiResults),
+            ],
             new QueryNormalizer(),
             new ResultRanker());
 
@@ -70,6 +82,7 @@ public sealed class Plugin : IDalamudPlugin
 
         WindowSystem.RemoveAllWindows();
         mainWindow.Dispose();
+        httpClient.Dispose();
     }
 
     public void ToggleMainUi() => mainWindow.Toggle();

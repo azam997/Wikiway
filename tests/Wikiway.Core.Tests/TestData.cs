@@ -12,7 +12,7 @@ internal static class TestData
         Score = score,
     };
 
-    public static WikiPageResult Wiki(string title, double score, string? snippet = null) => new()
+    public static WikiPageResult WikiResult(string title, double score, string? snippet = null) => new()
     {
         Title = title,
         Source = new Citation("consolegameswiki", new Uri("https://ffxiv.consolegameswiki.com/wiki/" + Uri.EscapeDataString(title))),

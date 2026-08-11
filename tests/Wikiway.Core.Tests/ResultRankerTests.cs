@@ -1,4 +1,4 @@
-using Wikiway.Core.Abstractions;
+﻿using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
 using Wikiway.Core.Pipeline;
 using Xunit;
@@ -16,7 +16,7 @@ public class ResultRankerTests
     [Fact]
     public void ExactLocalEntityBeatsWikiHit()
     {
-        var wiki = new ProviderResult("wiki", [Wiki("Momodi", 1.0)], ProviderStatus.Ok);
+        var wiki = new ProviderResult("wiki", [WikiResult("Momodi", 1.0)], ProviderStatus.Ok);
         var local = new ProviderResult("local", [Card(Npc(), 1.0)], ProviderStatus.Ok);
 
         var merged = ranker.Merge(Query(), [wiki, local]);
@@ -27,7 +27,7 @@ public class ResultRankerTests
     [Fact]
     public void FuzzyLocalEntityStillBeatsWiki()
     {
-        var wiki = new ProviderResult("wiki", [Wiki("Momodi", 1.0)], ProviderStatus.Ok);
+        var wiki = new ProviderResult("wiki", [WikiResult("Momodi", 1.0)], ProviderStatus.Ok);
         var local = new ProviderResult("local", [Card(Npc(), 0.6)], ProviderStatus.Ok);
 
         var merged = ranker.Merge(Query(), [wiki, local]);
@@ -51,7 +51,7 @@ public class ResultRankerTests
     public void WikiResultsKeepRelevanceOrder()
     {
         var wiki = new ProviderResult("wiki",
-            [Wiki("Less relevant", 0.4), Wiki("More relevant", 0.9)], ProviderStatus.Ok);
+            [WikiResult("Less relevant", 0.4), WikiResult("More relevant", 0.9)], ProviderStatus.Ok);
 
         var merged = ranker.Merge(Query(), [wiki]);
 

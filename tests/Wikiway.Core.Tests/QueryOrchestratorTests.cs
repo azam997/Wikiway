@@ -1,4 +1,4 @@
-using Wikiway.Core.Abstractions;
+﻿using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
 using Wikiway.Core.Pipeline;
 using Xunit;
@@ -20,7 +20,7 @@ public class QueryOrchestratorTests
     {
         var orchestrator = Build([
             new StubProvider("a", [Card(Npc(), 1.0)]),
-            new StubProvider("b", [Wiki("Momodi", 0.9)]),
+            new StubProvider("b", [WikiResult("Momodi", 0.9)]),
         ]);
 
         var result = await orchestrator.ExecuteAsync("momodi", CancellationToken.None);
@@ -33,7 +33,7 @@ public class QueryOrchestratorTests
     {
         var orchestrator = Build([
             new StubProvider("boom", _ => throw new InvalidOperationException("no")),
-            new StubProvider("ok", [Wiki("Momodi", 0.9)]),
+            new StubProvider("ok", [WikiResult("Momodi", 0.9)]),
         ]);
 
         var result = await orchestrator.ExecuteAsync("momodi", CancellationToken.None);
@@ -95,7 +95,7 @@ public class QueryOrchestratorTests
     [Fact]
     public async Task NoSynthesizerMeansNullAnswer()
     {
-        var orchestrator = Build([new StubProvider("wiki", [Wiki("Momodi", 0.9)])]);
+        var orchestrator = Build([new StubProvider("wiki", [WikiResult("Momodi", 0.9)])]);
 
         var result = await orchestrator.ExecuteAsync("momodi", CancellationToken.None);
 
@@ -106,7 +106,7 @@ public class QueryOrchestratorTests
     public async Task ConfiguredSynthesizerGetsRetrievedDocs()
     {
         var orchestrator = Build(
-            [new StubProvider("wiki", [Wiki("Momodi", 0.9)])],
+            [new StubProvider("wiki", [WikiResult("Momodi", 0.9)])],
             new StubRetriever(),
             new StubSynthesizer());
 
