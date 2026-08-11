@@ -1,0 +1,16 @@
+{
+  "Author": "azam997",
+  "Name": "Wikiway",
+  "Punchline": "Ask about NPCs, quests, items and more without leaving the game.",
+  "Description": "Answers lookup questions from local game data first and ffxiv.consolegameswiki.com second. Type /wikiway followed by a question or a name, e.g. /wikiway where is momodi.",
+  "ApplicableVersion": "any",
+  "RepoUrl": "https://github.com/azam997/Wikiway",
+  "Tags": [
+    "wiki",
+    "search",
+    "lookup",
+    "quest",
+    "npc",
+    "item"
+  ]
+}

@@ -1,0 +1,16 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+
+  <PropertyGroup>
+    <Version>0.1.0.0</Version>
+    <Description>Look up NPCs, quests, items, mounts, minions and achievements without leaving the game.</Description>
+    <PackageProjectUrl>https://github.com/azam997/Wikiway</PackageProjectUrl>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Wikiway.Core\Wikiway.Core.csproj" />
+    <ProjectReference Include="..\Wikiway.GameData\Wikiway.GameData.csproj" />
+  </ItemGroup>
+
+</Project>

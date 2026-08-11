@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Wikiway.Core/Wikiway.Core.csproj" />
+    <Project Path="src/Wikiway.GameData/Wikiway.GameData.csproj" />
+    <Project Path="src/Wikiway.Plugin/Wikiway.Plugin.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Wikiway.Canary.Tests/Wikiway.Canary.Tests.csproj" />
+    <Project Path="tests/Wikiway.Core.Tests/Wikiway.Core.Tests.csproj" />
+  </Folder>
+</Solution>
