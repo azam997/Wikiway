@@ -15,6 +15,18 @@ public abstract record SearchResult
 public sealed record EntityCardResult : SearchResult
 {
     public required GameEntity Entity { get; init; }
+
+    // Set when duplicate same-named entities were collapsed into this card.
+    public IReadOnlyList<MapLocation> MergedLocations { get; init; } = [];
+
+    public int MergedCount { get; init; } = 1;
+
+    public int MergedHidden { get; init; }
+
+    // Set when a same-titled wiki sections result was absorbed into this card.
+    public IReadOnlyList<WikiSectionText> WikiSections { get; init; } = [];
+
+    public Uri? WikiUrl { get; init; }
 }
 
 public sealed record WikiPageResult : SearchResult

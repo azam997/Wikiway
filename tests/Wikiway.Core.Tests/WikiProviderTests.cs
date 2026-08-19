@@ -49,14 +49,14 @@ public class WikiProviderTests
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(new WikiSearchHit("Iron Ingot", 1, ""))
         {
-            Sections = [new WikiSection("2", "Acquisition", 1), new WikiSection("5", "Used For", 1)],
+            Sections = [new WikiSection("2", "Treasure Hunt", 1), new WikiSection("5", "Used For", 1)],
         });
 
         var result = await provider.SearchAsync(Query("iron ingot", SearchCategory.Items), CancellationToken.None);
 
         var sections = Assert.IsType<WikiSectionsResult>(result.Results[0]);
         var section = Assert.Single(sections.Sections);
-        Assert.Equal("Acquisition", section.Heading);
+        Assert.Equal("Treasure Hunt", section.Heading);
         Assert.Contains("section 2 of Iron Ingot", section.Text);
         Assert.IsType<WikiPageResult>(result.Results[1]);
     }
@@ -85,6 +85,47 @@ public class WikiProviderTests
             Query("the ultimate weapon", SearchCategory.Quests), CancellationToken.None);
 
         Assert.Equal(1.0, result.Results[0].Score);
+    }
+
+    [Fact]
+    public async Task RedirectSnippetIsDroppedAndDemoted()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
+            new WikiSearchHit("Momodi Modi", 1, "#REDIRECT [[Momodi]]")));
+
+        var result = await provider.SearchAsync(Query("momodi"), CancellationToken.None);
+
+        var hit = Assert.IsType<WikiPageResult>(result.Results[0]);
+        Assert.Null(hit.Snippet);
+        Assert.True(hit.Score <= 0.1);
+    }
+
+    [Fact]
+    public async Task MarkupDominatedLeadIsSkippedAndDemoted()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(new WikiSearchHit("Momodi", 1, "prose snippet"))
+        {
+            LeadHtml = "<style>.infobox{float:right}</style>{{npcbox|name=Momodi}}",
+        });
+
+        var result = await provider.SearchAsync(Query("momodi"), CancellationToken.None);
+
+        var hit = Assert.IsType<WikiPageResult>(result.Results[0]);
+        Assert.Null(hit.Lead);
+        Assert.True(hit.Score <= 0.1);
+    }
+
+    [Fact]
+    public async Task InfoboxSourceSnippetIsDroppedAndDemoted()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
+            new WikiSearchHit("Momodi", 1, "| name = Momodi\n| full-name = Momodi Modi")));
+
+        var result = await provider.SearchAsync(Query("momodi"), CancellationToken.None);
+
+        var hit = Assert.IsType<WikiPageResult>(result.Results[0]);
+        Assert.Null(hit.Snippet);
+        Assert.True(hit.Score <= 0.1);
     }
 
     [Fact]
@@ -126,6 +167,8 @@ public class WikiProviderTests
     {
         public IReadOnlyList<WikiSection> Sections { get; init; } = [];
 
+        public string? LeadHtml { get; init; }
+
         public Uri PageUrl(string title) =>
             new("https://ffxiv.consolegameswiki.com/wiki/" + title.Replace(' ', '_'));
 
@@ -133,7 +176,7 @@ public class WikiProviderTests
             Task.FromResult<IReadOnlyList<WikiSearchHit>>(hits);
 
         public Task<string?> GetLeadSectionHtmlAsync(string pageTitle, CancellationToken ct) =>
-            Task.FromResult<string?>($"<p>lead of {pageTitle}</p>");
+            Task.FromResult<string?>(LeadHtml ?? $"<p>lead of {pageTitle}</p>");
 
         public Task<string?> GetPagePlainTextAsync(string pageTitle, CancellationToken ct) =>
             Task.FromResult<string?>($"plain text of {pageTitle}");

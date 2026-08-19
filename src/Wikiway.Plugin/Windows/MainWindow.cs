@@ -1,20 +1,24 @@
 using System;
-using System.Linq;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
-using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
-using Wikiway.Plugin.GameIntegration;
+using Wikiway.Plugin.Ui;
 
 namespace Wikiway.Plugin.Windows;
 
-public class MainWindow : Window, IDisposable
+public partial class MainWindow : Window, IDisposable
 {
+    private const double ScoreGate = 0.2;
+    private const int StyleColorCount = 21;
+    private const int StyleVarCount = 3;
+
     private static readonly (string Label, SearchCategory Value)[] Categories =
     [
         ("Items", SearchCategory.Items),
@@ -25,10 +29,14 @@ public class MainWindow : Window, IDisposable
     ];
 
     private readonly Plugin plugin;
+    private readonly List<SearchResult> aboveGate = [];
+    private readonly List<SearchResult> belowGate = [];
+    private readonly HashSet<string> expandedRows = [];
 
     private string queryInput = string.Empty;
     private int categoryIndex = Categories.Length - 1;
     private bool focusInput;
+    private bool lowRelevanceOpen;
 
     private CancellationTokenSource? queryCts;
     private Task<QueryResponse>? pending;
@@ -63,64 +71,216 @@ public class MainWindow : Window, IDisposable
 
     public override void OnOpen() => focusInput = true;
 
+    public override void PreDraw()
+    {
+        base.PreDraw();
+        var scale = ImGuiHelpers.GlobalScale;
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, Theme.Bg);
+        ImGui.PushStyleColor(ImGuiCol.TitleBg, Theme.Surface);
+        ImGui.PushStyleColor(ImGuiCol.TitleBgActive, Theme.Surface);
+        ImGui.PushStyleColor(ImGuiCol.TitleBgCollapsed, Theme.Surface);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Text);
+        ImGui.PushStyleColor(ImGuiCol.FrameBg, Theme.Surface);
+        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Theme.Surface);
+        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Theme.Surface);
+        ImGui.PushStyleColor(ImGuiCol.Border, Theme.Divider);
+        ImGui.PushStyleColor(ImGuiCol.Separator, Theme.Divider);
+        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.Accent900);
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, Theme.Accent800);
+        ImGui.PushStyleColor(ImGuiCol.PopupBg, Theme.Surface);
+        ImGui.PushStyleColor(ImGuiCol.ScrollbarBg, Theme.Bg);
+        ImGui.PushStyleColor(ImGuiCol.ScrollbarGrab, Theme.Neutral800);
+        ImGui.PushStyleColor(ImGuiCol.ScrollbarGrabHovered, Theme.Neutral700);
+        ImGui.PushStyleColor(ImGuiCol.ScrollbarGrabActive, Theme.Accent700);
+        ImGui.PushStyleColor(ImGuiCol.Header, Theme.Surface);
+        ImGui.PushStyleColor(ImGuiCol.HeaderHovered, Theme.Accent900);
+        ImGui.PushStyleColor(ImGuiCol.HeaderActive, Theme.Accent800);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, Theme.RadiusMd * scale);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, Theme.RadiusMd * scale);
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(Theme.Space4, Theme.Space3) * scale);
+    }
+
+    public override void PostDraw()
+    {
+        ImGui.PopStyleVar(StyleVarCount);
+        ImGui.PopStyleColor(StyleColorCount);
+        base.PostDraw();
+    }
+
     public override void Draw()
     {
+        DrawBrandStrip();
+        DrawSearchRow();
+        Widgets.FadingRule();
+        ImGui.Spacing();
+
+        HarvestPending();
+
+        if (pending != null)
+        {
+            DrawPendingState();
+            return;
+        }
+
+        if (error != null)
+        {
+            DrawErrorState();
+            return;
+        }
+
+        if (response == null)
+        {
+            DrawIdleState();
+            return;
+        }
+
+        DrawResults(response);
+    }
+
+    private void DrawBrandStrip()
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        fonts.Brand18.Push();
+        ImGui.TextUnformatted("Wikiway");
+        fonts.Brand18.Pop();
+        var brandMin = ImGui.GetItemRectMin();
+        var brandMax = ImGui.GetItemRectMax();
+
+        ImGui.SameLine(0, Theme.Space3 * scale);
+        var tick = ImGui.GetCursorScreenPos();
+        var tickY = (brandMin.Y + brandMax.Y) * 0.5f;
+        ImGui.GetWindowDrawList().AddRectFilled(
+            new Vector2(tick.X, tickY),
+            new Vector2(tick.X + (18f * scale), tickY + MathF.Max(1f, scale)),
+            Theme.AccentU);
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (18f * scale) + (Theme.Space3 * scale));
+
+        fonts.Small11.Push();
+        var pos = ImGui.GetCursorScreenPos();
+        ImGui.SetCursorScreenPos(pos with { Y = brandMax.Y - ImGui.GetTextLineHeight() - (3f * scale) });
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
+        ImGui.TextUnformatted("LOCAL GAME DATA + CONSOLEGAMESWIKI");
+        ImGui.PopStyleColor();
+        fonts.Small11.Pop();
+        ImGui.Spacing();
+    }
+
+    private void DrawSearchRow()
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+        var dl = ImGui.GetWindowDrawList();
+
+        fonts.Body14.Push();
+        var searchWidth = ImGui.CalcTextSize("Search").X + (Theme.Space4 * 2f * scale);
+        fonts.Body14.Pop();
+
+        fonts.Body13.Push();
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, Vector2.Zero);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 0f);
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+        ImGui.BeginGroup();
+        for (var i = 0; i < Categories.Length; i++)
+        {
+            if (i > 0)
+            {
+                ImGui.SameLine();
+                var edge = ImGui.GetCursorScreenPos();
+                dl.AddLine(edge, edge with { Y = ImGui.GetItemRectMax().Y }, Theme.DividerU);
+            }
+
+            var active = i == categoryIndex;
+            ImGui.PushStyleColor(ImGuiCol.Button, active ? Theme.Accent800 : Vector4.Zero);
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, active ? Theme.Accent800 : Theme.Accent900);
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, Theme.Accent800);
+            ImGui.PushStyleColor(ImGuiCol.Text, active ? Theme.Accent100 : Theme.Neutral500);
+            if (ImGui.Button($"{Categories[i].Label}##seg{i}"))
+                categoryIndex = i;
+            ImGui.PopStyleColor(4);
+        }
+
+        ImGui.EndGroup();
+        ImGui.PopStyleVar(3);
+        fonts.Body13.Pop();
+        dl.AddRect(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), Theme.DividerU, Theme.RadiusMd * scale);
+
+        ImGui.SameLine(0, Theme.Space3 * scale);
+        ImGuiComponents.HelpMarker(
+            "Narrows the search: Items focuses on acquisition, Quests on unlocks, " +
+            "Duties on guides, NPCs on locations. Other searches everything.");
+
+        ImGui.SameLine(0, Theme.Space3 * scale);
         if (focusInput)
         {
             ImGui.SetKeyboardFocusHere();
             focusInput = false;
         }
 
-        ImGui.SetNextItemWidth(90 * ImGuiHelpers.GlobalScale);
-        if (ImGui.BeginCombo("##wikiway-category", Categories[categoryIndex].Label))
-        {
-            for (var i = 0; i < Categories.Length; i++)
-            {
-                if (ImGui.Selectable(Categories[i].Label, i == categoryIndex))
-                    categoryIndex = i;
-            }
+        var glyph = FontAwesomeIcon.Search.ToIconString();
+        fonts.Citation12.Push();
+        var glyphSize = ImGui.CalcTextSize(glyph);
+        fonts.Citation12.Pop();
 
-            ImGui.EndCombo();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
-            "Narrows the search: Items focuses on acquisition, Quests on unlocks, " +
-            "Duties on guides, NPCs on locations. Other searches everything.");
-
-        ImGui.SameLine();
-        ImGui.SetNextItemWidth(-70);
+        fonts.Body14.Push();
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding,
+            new Vector2(glyphSize.X + (Theme.Space3 * 2f * scale), Theme.Space2 * scale));
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
+        var inputPos = ImGui.GetCursorScreenPos();
+        ImGui.SetNextItemWidth(-(searchWidth + (Theme.Space3 * scale)));
         var submitted = ImGui.InputTextWithHint("##wikiway-query", "where is momodi...", ref queryInput, 256,
             ImGuiInputTextFlags.EnterReturnsTrue);
-        ImGui.SameLine();
-        submitted |= ImGui.Button("Search");
+        var inputHeight = ImGui.GetItemRectSize().Y;
+        ImGui.PopStyleVar(2);
+        fonts.Body14.Pop();
+
+        fonts.Citation12.Push();
+        dl.AddText(
+            inputPos + new Vector2(Theme.Space3 * scale, (inputHeight - glyphSize.Y) * 0.5f),
+            Theme.Neutral600U,
+            glyph);
+        fonts.Citation12.Pop();
+
+        ImGui.SameLine(0, Theme.Space3 * scale);
+        fonts.Body14.Push();
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+        submitted |= Widgets.OutlinedButton("Search");
+        ImGui.PopStyleVar();
+        fonts.Body14.Pop();
 
         if (submitted)
             RunQuery();
+    }
 
-        ImGui.Separator();
+    private void DrawPendingState()
+    {
+        Widgets.Spinner();
+        ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
+        plugin.Fonts.Body14.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+        ImGui.TextUnformatted("Searching…");
+        ImGui.PopStyleColor();
+        plugin.Fonts.Body14.Pop();
+    }
 
-        HarvestPending();
+    private void DrawErrorState()
+    {
+        plugin.Fonts.Body14.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent300);
+        ImGui.TextWrapped(error!);
+        ImGui.PopStyleColor();
+        plugin.Fonts.Body14.Pop();
+    }
 
-        if (pending != null)
-        {
-            ImGui.TextDisabled("Searching...");
-            return;
-        }
-
-        if (error != null)
-        {
-            ImGui.TextColored(new Vector4(0.9f, 0.4f, 0.4f, 1f), error);
-            return;
-        }
-
-        if (response == null)
-        {
-            ImGui.TextDisabled("Type a question or a name and hit enter.");
-            return;
-        }
-
-        DrawResults(response);
+    private void DrawIdleState()
+    {
+        plugin.Fonts.Body14.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+        ImGui.TextUnformatted("Type a question or a name and hit enter.");
+        ImGui.PopStyleColor();
+        plugin.Fonts.Body14.Pop();
     }
 
     // The pipeline runs on the thread pool; the draw loop just polls the task.
@@ -130,9 +290,21 @@ public class MainWindow : Window, IDisposable
             return;
 
         if (pending.IsCompletedSuccessfully)
+        {
             response = pending.Result;
+            aboveGate.Clear();
+            belowGate.Clear();
+            foreach (var hit in response.Results)
+                (hit.Score < ScoreGate ? belowGate : aboveGate).Add(hit);
+            lowRelevanceOpen = false;
+            expandedRows.Clear();
+            if (aboveGate.Count > 0 && aboveGate[0] is EntityCardResult top && HasDetail(top))
+                expandedRows.Add(RowKey(top));
+        }
         else if (!pending.IsCanceled)
+        {
             error = pending.Exception?.GetBaseException().Message ?? "something went wrong";
+        }
 
         pending = null;
     }
@@ -151,147 +323,5 @@ public class MainWindow : Window, IDisposable
         error = null;
         var category = Categories[categoryIndex].Value;
         pending = Task.Run(() => plugin.Pipeline.ExecuteAsync(query, category, ct), ct);
-    }
-
-    private void DrawResults(QueryResponse result)
-    {
-        if (result.Results.Count == 0)
-        {
-            ImGui.TextDisabled($"Nothing found for \"{result.Query.Term}\".");
-            DrawProviderFooter(result);
-            return;
-        }
-
-        foreach (var hit in result.Results)
-        {
-            switch (hit)
-            {
-                case EntityCardResult card:
-                    DrawEntityCard(card);
-                    break;
-                case WikiPageResult wiki:
-                    DrawWikiResult(wiki);
-                    break;
-                case WikiSectionsResult sections:
-                    DrawWikiSections(sections);
-                    break;
-            }
-
-            ImGui.Spacing();
-        }
-
-        DrawProviderFooter(result);
-    }
-
-    private void DrawEntityCard(EntityCardResult card)
-    {
-        switch (card.Entity)
-        {
-            case NpcEntity npc:
-                Header(npc.Name, "NPC");
-                if (npc.Location is { } loc)
-                {
-                    ImGui.TextDisabled($"{loc.ZoneName} ({loc.MapX:0.0}, {loc.MapY:0.0})");
-                    ImGui.SameLine();
-                    if (ImGui.SmallButton($"Flag map##npc{npc.RowId}"))
-                        MapLinkOpener.Open(loc);
-                }
-                break;
-
-            case ItemEntity item:
-                Header(item.Name, item.Category.Length > 0 ? item.Category : "Item");
-                if (item.Description.Length > 0)
-                    ImGui.TextWrapped(item.Description);
-                ImGui.TextDisabled(item.Marketable ? "Marketboard: yes" : "Marketboard: no");
-                break;
-
-            case QuestEntity quest:
-                Header(quest.Name, quest.Genre.Length > 0 ? $"Quest · {quest.Genre}" : "Quest");
-                if (quest.ClassJobLevel > 0)
-                    ImGui.TextDisabled($"Level {quest.ClassJobLevel}");
-                if (quest.Prerequisites.Count > 0)
-                    ImGui.TextWrapped("Requires: " + string.Join(", ", quest.Prerequisites.Select(p => p.Name)));
-                break;
-
-            case MountEntity mount:
-                Header(mount.Name, "Mount");
-                break;
-
-            case MinionEntity minion:
-                Header(minion.Name, "Minion");
-                break;
-
-            case DutyEntity duty:
-                Header(duty.Name, duty.ContentType.Length > 0 ? duty.ContentType : "Duty");
-                if (duty.ClassJobLevel > 0)
-                    ImGui.TextDisabled(duty.ItemLevel > 0
-                        ? $"Level {duty.ClassJobLevel} · ilvl {duty.ItemLevel}"
-                        : $"Level {duty.ClassJobLevel}");
-                if (duty.Solo)
-                    ImGui.TextDisabled("Solo duty");
-                break;
-
-            case AchievementEntity achievement:
-                Header(achievement.Name,
-                    achievement.Category.Length > 0 ? $"Achievement · {achievement.Category}" : "Achievement");
-                if (achievement.Description.Length > 0)
-                    ImGui.TextWrapped(achievement.Description);
-                break;
-
-            default:
-                Header(card.Title, card.Source.Label);
-                break;
-        }
-    }
-
-    private static void Header(string name, string tag)
-    {
-        ImGui.TextUnformatted(name);
-        ImGui.SameLine();
-        ImGui.TextDisabled(tag);
-    }
-
-    private void DrawWikiResult(WikiPageResult wiki)
-    {
-        ImGui.TextUnformatted(wiki.Title);
-        ImGui.SameLine();
-        ImGui.TextDisabled(wiki.Source.Label);
-        ImGui.SameLine();
-        if (ImGui.SmallButton($"Open##wiki{wiki.Title}"))
-            BrowserOpener.Open(wiki.PageUrl);
-        if (wiki.Lead != null)
-            ImGui.TextWrapped(wiki.Lead);
-        else if (wiki.Snippet != null)
-            ImGui.TextWrapped(wiki.Snippet);
-    }
-
-    private void DrawWikiSections(WikiSectionsResult wiki)
-    {
-        ImGui.TextUnformatted(wiki.Title);
-        ImGui.SameLine();
-        ImGui.TextDisabled(wiki.Source.Label);
-        ImGui.SameLine();
-        if (ImGui.SmallButton($"Open##wikisec{wiki.Title}"))
-            BrowserOpener.Open(wiki.PageUrl);
-
-        for (var i = 0; i < wiki.Sections.Count; i++)
-        {
-            var section = wiki.Sections[i];
-            var flags = i == 0 ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
-            if (ImGui.CollapsingHeader($"{section.Heading}##sec{wiki.Title}{i}", flags))
-                ImGui.TextWrapped(section.Text);
-        }
-    }
-
-    private static void DrawProviderFooter(QueryResponse result)
-    {
-        foreach (var provider in result.ProviderDetail)
-        {
-            if (provider.Status == ProviderStatus.Failed)
-            {
-                ImGui.Separator();
-                ImGui.TextDisabled($"{provider.ProviderId} unavailable ({provider.Error}) - results may be incomplete.");
-            }
-        }
     }
 }

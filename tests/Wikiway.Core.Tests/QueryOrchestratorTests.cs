@@ -104,6 +104,20 @@ public class QueryOrchestratorTests
     }
 
     [Fact]
+    public async Task ElapsedTimeIsMeasured()
+    {
+        var slow = new StubProvider("slow", async ct =>
+        {
+            await Task.Delay(10, ct);
+            return new ProviderResult("slow", [], ProviderStatus.Ok);
+        });
+
+        var result = await Build([slow]).ExecuteAsync("momodi", SearchCategory.Other, CancellationToken.None);
+
+        Assert.True(result.Elapsed > TimeSpan.Zero);
+    }
+
+    [Fact]
     public async Task NoSynthesizerMeansNullAnswer()
     {
         var orchestrator = Build([new StubProvider("wiki", [WikiResult("Momodi", 0.9)])]);

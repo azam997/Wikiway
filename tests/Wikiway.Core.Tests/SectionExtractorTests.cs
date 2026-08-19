@@ -22,8 +22,24 @@ public class SectionExtractorTests
 
         var picked = SectionExtractor.SelectSections(SearchCategory.Items, sections);
 
-        Assert.Equal(3, picked.Count);
+        Assert.Equal(2, picked.Count);
         Assert.DoesNotContain(picked, s => s.Title == "Lore");
+        Assert.DoesNotContain(picked, s => s.Title == "Acquisition");
+    }
+
+    [Fact]
+    public void SheetCoveredSectionsAreNotPicked()
+    {
+        var sections = new[]
+        {
+            Section("2", "Purchase"),
+            Section("3", "Crafting Recipe"),
+            Section("4", "Treasure Hunt"),
+        };
+
+        var picked = SectionExtractor.SelectSections(SearchCategory.Items, sections);
+
+        Assert.Equal("Treasure Hunt", Assert.Single(picked).Title);
     }
 
     [Fact]
@@ -47,7 +63,7 @@ public class SectionExtractorTests
     [Fact]
     public void TranscludedIndicesAreSkipped()
     {
-        var sections = new[] { Section("T-1", "Acquisition"), Section("2", "Vendors") };
+        var sections = new[] { Section("T-1", "Obtained From"), Section("2", "Dropped By") };
 
         var picked = SectionExtractor.SelectSections(SearchCategory.Items, sections);
 

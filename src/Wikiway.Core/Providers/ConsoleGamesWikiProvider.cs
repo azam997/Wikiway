@@ -32,14 +32,27 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
         {
             var hit = hits[i];
             var url = client.PageUrl(hit.Title);
+
+            // The API returns relevance order; keep it, decaying gently.
+            var score = Math.Max(0.1, 1.0 - (i * 0.08));
+
+            string? snippet = null;
+            if (hit.SnippetHtml.Length > 0)
+            {
+                var raw = HtmlText.Strip(hit.SnippetHtml);
+                if (WikiMarkup.IsMarkupDominated(raw))
+                    score = Math.Min(score, 0.1);
+                else
+                    snippet = WikiMarkup.Clean(raw);
+            }
+
             results.Add(new WikiPageResult
             {
                 Title = hit.Title,
                 Source = new Citation("consolegameswiki", url),
                 PageUrl = url,
-                Snippet = hit.SnippetHtml.Length > 0 ? HtmlText.Strip(hit.SnippetHtml) : null,
-                // The API returns relevance order; keep it, decaying gently.
-                Score = Math.Max(0.1, 1.0 - (i * 0.08)),
+                Snippet = snippet is { Length: > 0 } ? snippet : null,
+                Score = score,
             });
         }
 
@@ -71,7 +84,19 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
         {
             var lead = await client.GetLeadSectionHtmlAsync(best.Title, ct).ConfigureAwait(false);
             if (lead != null)
-                results[0] = best with { Lead = Truncate(HtmlText.Strip(lead), 700) };
+            {
+                var raw = HtmlText.Strip(lead);
+                if (WikiMarkup.IsMarkupDominated(raw))
+                {
+                    results[0] = best with { Score = Math.Min(best.Score, 0.1) };
+                }
+                else
+                {
+                    var text = WikiMarkup.Clean(raw);
+                    if (text.Length > 0)
+                        results[0] = best with { Lead = Truncate(text, 700) };
+                }
+            }
         }
         catch (HttpRequestException)
         {
@@ -95,7 +120,7 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
                 if (html == null)
                     continue;
 
-                var text = HtmlText.Strip(html);
+                var text = WikiMarkup.Clean(HtmlText.Strip(html));
                 if (text.Length > 0)
                     bodies.Add(new WikiSectionText(section.Title, Truncate(text, 1200)));
             }

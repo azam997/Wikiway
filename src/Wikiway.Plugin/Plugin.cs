@@ -13,6 +13,7 @@ using Wikiway.Core.Providers;
 using Wikiway.Core.Wiki;
 using Wikiway.GameData;
 using Wikiway.Plugin.GameIntegration;
+using Wikiway.Plugin.Ui;
 using Wikiway.Plugin.Windows;
 
 namespace Wikiway.Plugin;
@@ -28,6 +29,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IContextMenu ContextMenu { get; private set; } = null!;
     [PluginService] internal static IClientState ClientState { get; private set; } = null!;
     [PluginService] internal static INotificationManager NotificationManager { get; private set; } = null!;
+    [PluginService] internal static ITextureProvider TextureProvider { get; private set; } = null!;
 
     private const string CommandName = "/wikiway";
     private const string CommandAlias = "/wway";
@@ -35,6 +37,7 @@ public sealed class Plugin : IDalamudPlugin
     public Configuration Configuration { get; }
     public IQueryPipeline Pipeline { get; }
     public ICacheStore CacheStore { get; }
+    internal Fonts Fonts { get; }
     public readonly WindowSystem WindowSystem = new("Wikiway");
 
     private readonly MainWindow mainWindow;
@@ -47,6 +50,7 @@ public sealed class Plugin : IDalamudPlugin
     public Plugin()
     {
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        Fonts = new Fonts(PluginInterface.UiBuilder.FontAtlas);
 
         CacheStore = new FileCacheStore(Path.Combine(PluginInterface.GetPluginConfigDirectory(), "cache"));
         httpClient = new HttpClient(new CachingHandler(CacheStore)
@@ -109,6 +113,7 @@ public sealed class Plugin : IDalamudPlugin
         contextMenuIntegration.Dispose();
         mainWindow.Dispose();
         httpClient.Dispose();
+        Fonts.Dispose();
     }
 
     public void ToggleMainUi() => mainWindow.Toggle();

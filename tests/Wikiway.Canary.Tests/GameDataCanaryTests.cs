@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using Wikiway.Core.Abstractions;
+using Wikiway.Core.Models;
+using Wikiway.Core.Pipeline;
 using Xunit;
 
 namespace Wikiway.Canary.Tests;
@@ -18,6 +20,7 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         var gil = store.GetItem(1);
         Assert.NotNull(gil);
         Assert.Contains("gil", gil.Name, StringComparison.OrdinalIgnoreCase);
+        Assert.True(gil.Icon > 0, "gil has no icon - Icon column read broke");
     }
 
     [Fact]
@@ -69,6 +72,62 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.Contains("ul'dah", npc.Location.ZoneName, StringComparison.OrdinalIgnoreCase);
     }
 
+    // Pins the sheets-first acquisition chain: Recipe results, GilShopItem ->
+    // GilShop handler -> vendor NPC -> Level location. Iron Ingot has had two
+    // recipes and gil vendors since 2013.
+    [Fact]
+    public void IronIngotAcquisitionResolvesFromSheets()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(5057);
+        Assert.NotNull(item);
+        Assert.Equal("Iron Ingot", item.Name);
+        Assert.NotNull(item.Acquisition);
+
+        Assert.InRange(item.Acquisition.Recipes.Count, 2, 4);
+        Assert.All(item.Acquisition.Recipes, r =>
+        {
+            Assert.False(string.IsNullOrEmpty(r.CraftType));
+            Assert.InRange(r.Level, 10, 20);
+            Assert.Contains(r.Ingredients, i => i.Contains("Iron Ore"));
+        });
+
+        var located = item.Acquisition.Vendors.Where(v => v.Location != null).ToList();
+        Assert.True(located.Count >= 3, $"expected 3+ located vendors, got {located.Count}");
+        Assert.Contains(located, v => v.Location!.ZoneName.Contains("Thanalan", StringComparison.OrdinalIgnoreCase));
+        Assert.All(item.Acquisition.Vendors, v => Assert.Equal(68u, v.GilPrice));
+    }
+
+    // Pins the scene-spawn filter: Momodi has quest-scene copies in other
+    // cities (single-quest event handlers) that must never surface as
+    // flaggable locations - only the Quicksand post survives the merge.
+    [Fact]
+    public void MomodiCollapsesToHerQuicksandPostOnly()
+    {
+        var store = fixture.Store();
+
+        var cards = store.GetAllNames()
+            .Where(n => n.Kind == EntityKind.Npc && n.Name == "momodi")
+            .Select(n => store.GetNpc(n.RowId))
+            .Where(n => n != null)
+            .Select(SearchResult (n) => new EntityCardResult
+            {
+                Title = n!.Name,
+                Source = new Citation("Game data"),
+                Entity = n,
+                Score = 1.0,
+            })
+            .ToList();
+
+        Assert.True(cards.Count > 1, "expected multiple momodi copies in ENpcResident");
+
+        var card = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(cards)));
+        var location = Assert.Single(card.MergedLocations);
+        Assert.Contains("ul'dah", location.ZoneName, StringComparison.OrdinalIgnoreCase);
+        Assert.True(card.MergedHidden > 0, "expected scene copies to be hidden");
+    }
+
     [Fact]
     public void UltimateWeaponQuestHasResolvablePrerequisites()
     {
@@ -99,11 +158,13 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         var store = fixture.Store();
         var names = store.GetAllNames();
 
-        var mount = names.First(n => n.Kind == EntityKind.Mount);
-        var minion = names.First(n => n.Kind == EntityKind.Minion);
+        var mount = store.GetMount(names.First(n => n.Kind == EntityKind.Mount).RowId);
+        var minion = store.GetMinion(names.First(n => n.Kind == EntityKind.Minion).RowId);
 
-        Assert.False(string.IsNullOrEmpty(store.GetMount(mount.RowId)?.Name));
-        Assert.False(string.IsNullOrEmpty(store.GetMinion(minion.RowId)?.Name));
+        Assert.False(string.IsNullOrEmpty(mount?.Name));
+        Assert.False(string.IsNullOrEmpty(minion?.Name));
+        Assert.True(mount!.Icon > 0, "mount has no icon - Icon column read broke");
+        Assert.True(minion!.Icon > 0, "minion has no icon - Icon column read broke");
     }
 
     [Fact]

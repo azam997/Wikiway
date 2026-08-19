@@ -2,10 +2,17 @@ namespace Wikiway.Core.Models;
 
 public abstract record GameEntity(uint RowId, string Name);
 
-public sealed record ItemEntity(uint RowId, string Name, string Category, string Description, bool Marketable)
+public sealed record ItemEntity(
+    uint RowId,
+    string Name,
+    string Category,
+    string Description,
+    bool Marketable,
+    ushort Icon = 0,
+    ItemAcquisition? Acquisition = null)
     : GameEntity(RowId, Name);
 
-public sealed record NpcEntity(uint RowId, string Name, MapLocation? Location)
+public sealed record NpcEntity(uint RowId, string Name, MapLocation? Location, int EventHandlers = 0)
     : GameEntity(RowId, Name);
 
 public sealed record QuestEntity(
@@ -18,9 +25,9 @@ public sealed record QuestEntity(
 
 public sealed record QuestLink(uint RowId, string Name);
 
-public sealed record MountEntity(uint RowId, string Name) : GameEntity(RowId, Name);
+public sealed record MountEntity(uint RowId, string Name, ushort Icon = 0) : GameEntity(RowId, Name);
 
-public sealed record MinionEntity(uint RowId, string Name) : GameEntity(RowId, Name);
+public sealed record MinionEntity(uint RowId, string Name, ushort Icon = 0) : GameEntity(RowId, Name);
 
 public sealed record AchievementEntity(uint RowId, string Name, string Description, string Category)
     : GameEntity(RowId, Name);

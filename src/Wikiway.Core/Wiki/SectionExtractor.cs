@@ -7,12 +7,14 @@ public static class SectionExtractor
 {
     private const int MaxSections = 3;
 
-    // Substring stems, not exact headings - the wiki says "Acquisition", "Obtained From",
-    // "How to Obtain", "Dropped By" interchangeably depending on the page's author.
+    // Substring stems, not exact headings - the wiki says "Obtained From",
+    // "How to Obtain", "Dropped By" interchangeably depending on the page's
+    // author. Purchase/crafting stems are deliberately absent: those sources
+    // render from the game sheets, so the wiki only contributes what the
+    // sheets can't know (drops, treasure hunts, exchanges).
     private static readonly string[] ItemKeywords =
     [
-        "acqui", "obtain", "source", "purchas", "vendor", "shop", "drop",
-        "craft", "recipe", "desynth", "exchange", "gather", "reward",
+        "obtain", "source", "drop", "treasure", "desynth", "exchange", "gather", "reward",
     ];
 
     private static readonly string[] DutyKeywords =

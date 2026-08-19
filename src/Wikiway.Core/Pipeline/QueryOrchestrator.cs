@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
 
@@ -30,6 +31,7 @@ public sealed class QueryOrchestrator : IQueryPipeline
 
     public async Task<QueryResponse> ExecuteAsync(string rawQuery, SearchCategory category, CancellationToken ct)
     {
+        var watch = Stopwatch.StartNew();
         var query = normalizer.Normalize(rawQuery, category);
 
         var searches = providers
@@ -40,9 +42,10 @@ public sealed class QueryOrchestrator : IQueryPipeline
 
         var providerResults = await Task.WhenAll(searches).ConfigureAwait(false);
         var merged = ranker.Merge(query, providerResults);
-        var answer = await TrySynthesizeAsync(query, merged, ct).ConfigureAwait(false);
+        var (results, detail) = ResultJoiner.AttachWikiSections(merged, providerResults);
+        var answer = await TrySynthesizeAsync(query, results, ct).ConfigureAwait(false);
 
-        return new QueryResponse(query, merged, providerResults, answer);
+        return new QueryResponse(query, results, detail, answer, watch.Elapsed);
     }
 
     private async Task<ProviderResult> RunProviderAsync(

@@ -1,6 +1,7 @@
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Matching;
 using Wikiway.Core.Models;
+using Wikiway.Core.Pipeline;
 
 namespace Wikiway.Core.Providers;
 
@@ -47,7 +48,7 @@ public sealed class LocalGameDataProvider : ISearchProvider
             });
         }
 
-        return new ProviderResult(Id, results, ProviderStatus.Ok);
+        return new ProviderResult(Id, EntityGrouper.Collapse(results), ProviderStatus.Ok);
     }
 
     private static EntityKind? KindFilter(SearchCategory category) => category switch
