@@ -16,6 +16,7 @@ public enum SearchCategory
     Quests,
     Duties,
     Npcs,
+    Areas,
 }
 
 public sealed record NormalizedQuery(

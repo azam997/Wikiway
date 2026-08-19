@@ -58,6 +58,18 @@ public class ConfigWindow : Window
         ImGui.SameLine();
         ImGuiComponents.HelpMarker("A small notification appears bottom-right; click it to open the guide.");
 
+        var unlocks = config.ShowUnlockRequirements;
+        if (ImGui.Checkbox("Show unlock requirements on quest and duty cards", ref unlocks))
+        {
+            config.ShowUnlockRequirements = unlocks;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "Adds an Unlock Requirements section with the prerequisite quest chain; " +
+            "each entry jumps to that quest in the Quests tab.");
+
         ImGui.Separator();
         if (ImGui.Button("Clear wiki cache"))
             _ = Task.Run(() => plugin.CacheStore.ClearAsync(CancellationToken.None));

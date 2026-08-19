@@ -57,6 +57,7 @@ public sealed class LocalGameDataProvider : ISearchProvider
         SearchCategory.Quests => EntityKind.Quest,
         SearchCategory.Npcs => EntityKind.Npc,
         SearchCategory.Duties => EntityKind.Duty,
+        SearchCategory.Areas => EntityKind.Area,
         _ => null,
     };
 
@@ -68,7 +69,7 @@ public sealed class LocalGameDataProvider : ISearchProvider
         EntityKind.Mount => store.GetMount(entry.RowId),
         EntityKind.Minion => store.GetMinion(entry.RowId),
         EntityKind.Achievement => store.GetAchievement(entry.RowId),
-        EntityKind.Duty => store.GetDuty(entry.RowId),
+        EntityKind.Duty or EntityKind.Area => store.GetDuty(entry.RowId),
         _ => null,
     };
 }

@@ -26,6 +26,7 @@ public enum EntityKind
     Minion,
     Achievement,
     Duty,
+    Area,
 }
 
 public sealed record NameIndexEntry(EntityKind Kind, uint RowId, string Name);

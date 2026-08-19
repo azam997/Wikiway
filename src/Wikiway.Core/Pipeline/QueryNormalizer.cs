@@ -56,7 +56,7 @@ public sealed class QueryNormalizer
             }
         }
 
-        // A typed leading phrase is a stronger signal than the dropdown.
+        // A typed leading phrase is a stronger signal than the tab.
         if (intent == QueryIntent.Unknown)
         {
             intent = category switch
@@ -65,6 +65,7 @@ public sealed class QueryNormalizer
                 SearchCategory.Quests => QueryIntent.Unlock,
                 SearchCategory.Npcs => QueryIntent.Location,
                 SearchCategory.Duties => QueryIntent.General,
+                SearchCategory.Areas => QueryIntent.Unlock,
                 _ => QueryIntent.Unknown,
             };
         }

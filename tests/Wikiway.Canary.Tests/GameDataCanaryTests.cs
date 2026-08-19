@@ -35,6 +35,7 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.True(Count(names, EntityKind.Mount) > 100, "mount names collapsed");
         Assert.True(Count(names, EntityKind.Minion) > 400, "minion names collapsed");
         Assert.True(Count(names, EntityKind.Achievement) > 2_000, "achievement names collapsed");
+        Assert.True(Count(names, EntityKind.Area) > 5, "area names collapsed");
     }
 
     [Fact]
@@ -150,6 +151,105 @@ public class GameDataCanaryTests(GameDataFixture fixture)
             Assert.False(string.IsNullOrEmpty(previous.Name));
             current = previous;
         }
+    }
+
+    // Pins the unlock-chain path: CFC UnlockCriteria -> Quest -> PreviousQuest
+    // walk with the MSQ boundary. South Horn is a field area whose chain is a
+    // few side quests ending in a Dawntrail MSQ (7.x) marker as of patch 7.3.
+    [Fact]
+    public void OccultCrescentUnlockChainResolvesAndStopsAtMsq()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Area && n.Name == "the occult crescent: south horn");
+        Assert.NotNull(entry);
+
+        var duty = store.GetDuty(entry.RowId);
+        Assert.NotNull(duty);
+        Assert.True(duty.FieldArea, "field-area detection broke");
+        Assert.NotNull(duty.UnlockQuest);
+        Assert.Equal("Unfamiliar Territory", duty.UnlockQuest.Name);
+
+        var quest = store.GetQuest(duty.UnlockQuest.RowId);
+        Assert.NotNull(quest);
+        Assert.InRange(quest.UnlockChain.Count, 2, 10);
+        Assert.All(quest.UnlockChain, s => Assert.False(string.IsNullOrEmpty(s.Quest.Name)));
+        for (var i = 1; i < quest.UnlockChain.Count; i++)
+            Assert.True(quest.UnlockChain[i].Depth >= quest.UnlockChain[i - 1].Depth, "chain depths regressed");
+        Assert.Equal("7.x", quest.MsqRequirement);
+        Assert.Equal("7.x", quest.UnlockChain[^1].MsqVersion);
+        Assert.False(quest.ChainContinues);
+
+        // Quest.IssuerLocation -> Level -> map coords, and the duty's shortcut
+        // to the chain's first pick-up-able quest.
+        var questSteps = quest.UnlockChain.Where(s => s.MsqVersion == null).ToList();
+        Assert.NotEmpty(questSteps);
+        Assert.Equal(questSteps[^1].Quest.Name, duty.ChainStart?.Name);
+        Assert.All(questSteps, s => Assert.NotNull(s.StartLocation));
+        Assert.NotNull(quest.StartLocation);
+        Assert.InRange(quest.StartLocation.MapX, 1, 45);
+        Assert.InRange(quest.StartLocation.MapY, 1, 45);
+        Assert.False(string.IsNullOrEmpty(quest.StartLocation.ZoneName));
+    }
+
+    // "The Bozja Incident" forks at "Hail to the Queen": Shadowbringers MSQ
+    // (5.x) AND the Return to Ivalice finale. The marker must sit at that
+    // fork's depth beside its sibling, not trail the whole chain.
+    [Fact]
+    public void BozjaIncidentForksIntoMsqAndIvalice()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Quest && n.Name == "the bozja incident");
+        Assert.NotNull(entry);
+
+        var quest = store.GetQuest(entry.RowId);
+        Assert.NotNull(quest);
+        Assert.Equal("5.x", quest.MsqRequirement);
+
+        var marker = quest.UnlockChain.FirstOrDefault(s => s.MsqVersion == "5.x");
+        Assert.NotNull(marker);
+        Assert.Contains(quest.UnlockChain,
+            s => s.MsqVersion == null && s.Depth == marker.Depth && s.Quest.Name == "The City of Lost Angels");
+        Assert.Contains(quest.UnlockChain, s => s.Depth > marker.Depth && s.MsqVersion == null);
+    }
+
+    // 100 quest-unlocked duties as of 7.3; 0 means the UnlockCriteria read
+    // broke, thousands means the typed-link check went over-broad.
+    [Fact]
+    public void DutyUnlockQuestCountLandsInAPlausibleBand()
+    {
+        var store = fixture.Store();
+
+        var unlocked = store.GetAllNames()
+            .Where(n => n.Kind is EntityKind.Duty or EntityKind.Area)
+            .Select(n => store.GetDuty(n.RowId))
+            .Count(d => d is { UnlockQuest: not null });
+
+        Assert.InRange(unlocked, 50, 500);
+    }
+
+    // "Dawntrail" (the 7.0 finale) is itself MSQ, so the boundary rule
+    // collapses its whole ancestry into MSQ marker steps and nothing else.
+    // "The Ultimate Weapon" is unusable as an anchor - an event quest shares
+    // the exact name and wins the index lookup.
+    [Fact]
+    public void MsqQuestChainCollapsesToItsPatchRequirement()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Quest && n.Name == "dawntrail");
+        Assert.NotNull(entry);
+
+        var quest = store.GetQuest(entry.RowId);
+        Assert.NotNull(quest);
+        Assert.True(quest.MainScenario, "MSQ category detection broke");
+        Assert.NotEmpty(quest.UnlockChain);
+        Assert.All(quest.UnlockChain, s => Assert.Equal("7.x", s.MsqVersion));
+        Assert.Equal("7.x", quest.MsqRequirement);
     }
 
     [Fact]

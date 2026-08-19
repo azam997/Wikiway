@@ -65,7 +65,7 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
                 results[0] = best;
             }
 
-            var sections = query.Category is SearchCategory.Items or SearchCategory.Duties
+            var sections = query.Category is SearchCategory.Items or SearchCategory.Duties or SearchCategory.Areas
                 ? await TryFetchSectionsAsync(query.Category, best, ct).ConfigureAwait(false)
                 : null;
 

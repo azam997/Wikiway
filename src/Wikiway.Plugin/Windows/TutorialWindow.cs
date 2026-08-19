@@ -13,12 +13,14 @@ public class TutorialWindow : Window
             "Open it any time with /wikiway (or /wway), optionally with a question - " +
             "\"/wikiway where is momodi\".\n\n" +
             "You can scope a command search with a prefix: \"/wikiway quest:the ultimate weapon\" " +
-            "(item:, quest:, duty:, npc:)."),
+            "(item:, quest:, duty:, npc:, area:)."),
         ("Search categories",
-            "The dropdown next to the search box narrows what a search means.\n\n" +
+            "The tabs above the search box narrow what a search means, and each tab " +
+            "keeps its own search and results.\n\n" +
             "Items - how to obtain an item: marketboard, vendors, drops, crafting.\n" +
             "Quests - unlocks, prerequisites and a quick path to the wiki page.\n" +
             "Duties - guides pulled straight from the wiki.\n" +
+            "Areas - field zones like Bozja or the Occult Crescent and how to unlock them.\n" +
             "NPCs - locations, with a map flag one click away.\n\n" +
             "Other is a free search across everything."),
         ("Right-click lookups",

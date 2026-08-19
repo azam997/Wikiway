@@ -21,9 +21,33 @@ public sealed record QuestEntity(
     ushort ClassJobLevel,
     string Genre,
     IReadOnlyList<QuestLink> Prerequisites)
-    : GameEntity(RowId, Name);
+    : GameEntity(RowId, Name)
+{
+    public QuestJoin PrerequisiteJoin { get; init; } = QuestJoin.All;
+    public string Expansion { get; init; } = "";
+    public bool MainScenario { get; init; }
+    public MapLocation? StartLocation { get; init; }
+    public IReadOnlyList<QuestChainStep> UnlockChain { get; init; } = [];
+    public string? MsqRequirement { get; init; }
+    public bool ChainContinues { get; init; }
+}
 
 public sealed record QuestLink(uint RowId, string Name);
+
+public enum QuestJoin
+{
+    None,
+    All,
+    Any,
+}
+
+public sealed record QuestChainStep(
+    QuestLink Quest,
+    int Depth,
+    QuestJoin Join,
+    ushort Level,
+    MapLocation? StartLocation = null,
+    string? MsqVersion = null);
 
 public sealed record MountEntity(uint RowId, string Name, ushort Icon = 0) : GameEntity(RowId, Name);
 
@@ -41,6 +65,11 @@ public sealed record DutyEntity(
     bool Solo,
     bool HighEnd,
     uint TerritoryTypeId)
-    : GameEntity(RowId, Name);
+    : GameEntity(RowId, Name)
+{
+    public QuestLink? UnlockQuest { get; init; }
+    public QuestLink? ChainStart { get; init; }
+    public bool FieldArea { get; init; }
+}
 
 public sealed record MapLocation(uint TerritoryTypeId, uint MapId, float MapX, float MapY, string ZoneName);

@@ -22,6 +22,11 @@ public static class SectionExtractor
         "guide", "strategy", "walkthrough", "boss", "phase", "mechanic", "tips", "fight",
     ];
 
+    private static readonly string[] AreaKeywords =
+    [
+        "unlock", "access", "requirement", "entry", "getting started", "overview",
+    ];
+
     public static IReadOnlyList<WikiSection> SelectSections(
         SearchCategory category, IReadOnlyList<WikiSection> sections)
     {
@@ -29,6 +34,7 @@ public static class SectionExtractor
         {
             SearchCategory.Items => ItemKeywords,
             SearchCategory.Duties => DutyKeywords,
+            SearchCategory.Areas => AreaKeywords,
             _ => null,
         };
         if (keywords == null)

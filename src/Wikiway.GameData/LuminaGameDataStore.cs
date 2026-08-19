@@ -1,6 +1,7 @@
 using Lumina.Excel.Sheets;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
+using Wikiway.Core.Pipeline;
 
 namespace Wikiway.GameData;
 
@@ -9,6 +10,11 @@ public sealed class LuminaGameDataStore : IGameDataStore
     private const byte LevelObjectTypeEventNpc = 8;
     private const uint ContentTypeQuestBattles = 7;
     private const uint ContentTypeMaskedCarnivale = 27;
+    private const byte ContentLinkTypePublicContent = 3;
+
+    // Field-operation zones: Diadem, Eureka, Save the Queen, Occult Crescent.
+    // Public-content link alone is too broad (GATEs are public content too).
+    private static readonly uint[] AreaContentTypes = [16, 26, 29, 38];
 
     private readonly Lumina.GameData gameData;
     private readonly Lock levelLock = new();
@@ -48,7 +54,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
             AddName(names, EntityKind.Achievement, row.RowId, row.Name.ExtractText());
 
         foreach (var row in gameData.GetExcelSheet<ContentFinderCondition>()!)
-            AddName(names, EntityKind.Duty, row.RowId, row.Name.ExtractText());
+            AddName(names, IsFieldArea(row) ? EntityKind.Area : EntityKind.Duty, row.RowId, row.Name.ExtractText());
 
         return names;
     }
@@ -224,6 +230,16 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     public QuestEntity? GetQuest(uint rowId)
     {
+        var quest = BuildQuest(rowId);
+        if (quest is not { Prerequisites.Count: > 0 })
+            return quest;
+
+        var (steps, continues, msqVersion) = QuestChainWalker.Walk(quest, BuildQuest);
+        return quest with { UnlockChain = steps, ChainContinues = continues, MsqRequirement = msqVersion };
+    }
+
+    private QuestEntity? BuildQuest(uint rowId)
+    {
         var row = gameData.GetExcelSheet<Quest>()!.GetRowOrDefault(rowId);
         if (row == null || row.Value.Name.IsEmpty)
             return null;
@@ -236,12 +252,22 @@ public sealed class LuminaGameDataStore : IGameDataStore
                 prerequisites.Add(new QuestLink(previous.RowId, prev.Name.ExtractText()));
         }
 
+        var genre = quest.JournalGenre.ValueNullable;
+        var category = genre?.JournalCategory.ValueNullable?.Name.ExtractText() ?? "";
+
         return new QuestEntity(
             rowId,
             quest.Name.ExtractText(),
             quest.ClassJobLevel.FirstOrDefault(),
-            quest.JournalGenre.ValueNullable?.Name.ExtractText() ?? "",
-            prerequisites);
+            genre?.Name.ExtractText() ?? "",
+            prerequisites)
+        {
+            PrerequisiteJoin = quest.PreviousQuestJoin == 2 ? QuestJoin.Any
+                : prerequisites.Count > 0 ? QuestJoin.All : QuestJoin.None,
+            Expansion = $"{quest.Expansion.RowId + 2}.x",
+            MainScenario = category.Contains("Main Scenario", StringComparison.OrdinalIgnoreCase),
+            StartLocation = quest.IssuerLocation.ValueNullable is { } issuer ? ToMapLocation(issuer) : null,
+        };
     }
 
     public MountEntity? GetMount(uint rowId)
@@ -287,6 +313,16 @@ public sealed class LuminaGameDataStore : IGameDataStore
         // can't identify it; the content type can - quest battles and the Carnivale.
         var solo = duty.ContentType.RowId is ContentTypeQuestBattles or ContentTypeMaskedCarnivale;
 
+        QuestLink? unlockQuest = null;
+        QuestLink? chainStart = null;
+        if (duty.UnlockCriteria.Is<Quest>() &&
+            duty.UnlockCriteria.GetValueOrDefault<Quest>() is { } unlock && !unlock.Name.IsEmpty)
+        {
+            unlockQuest = new QuestLink(duty.UnlockCriteria.RowId, unlock.Name.ExtractText());
+            if (GetQuest(unlockQuest.RowId) is { } unlockEntity)
+                chainStart = unlockEntity.UnlockChain.LastOrDefault(s => s.MsqVersion == null)?.Quest;
+        }
+
         return new DutyEntity(
             rowId,
             duty.Name.ExtractText(),
@@ -295,8 +331,16 @@ public sealed class LuminaGameDataStore : IGameDataStore
             duty.ItemLevelRequired,
             solo,
             duty.HighEndDuty,
-            duty.TerritoryType.RowId);
+            duty.TerritoryType.RowId)
+        {
+            UnlockQuest = unlockQuest,
+            ChainStart = chainStart,
+            FieldArea = IsFieldArea(duty),
+        };
     }
+
+    private static bool IsFieldArea(ContentFinderCondition row) =>
+        row.ContentLinkType == ContentLinkTypePublicContent && AreaContentTypes.Contains(row.ContentType.RowId);
 
     public DutyEntity? FindDutyByTerritory(uint territoryTypeId)
     {
@@ -335,9 +379,11 @@ public sealed class LuminaGameDataStore : IGameDataStore
             }
         }
 
-        if (!levels.TryGetValue(npcRowId, out var level))
-            return null;
+        return levels.TryGetValue(npcRowId, out var level) ? ToMapLocation(level) : null;
+    }
 
+    private static MapLocation? ToMapLocation(Level level)
+    {
         var map = level.Map.ValueNullable;
         var territory = level.Territory.ValueNullable;
         if (map == null || territory == null)
