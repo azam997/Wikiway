@@ -1,4 +1,5 @@
 using Wikiway.Core.Abstractions;
+using Wikiway.Core.Pipeline;
 
 namespace Wikiway.Core.Matching;
 
@@ -6,13 +7,27 @@ public sealed record NameMatch(NameIndexEntry Entry, double Score);
 
 public sealed class FuzzyNameIndex
 {
-    private readonly List<NameIndexEntry> entries;
+    private readonly record struct IndexedName(NameIndexEntry Entry, string Bare);
+
+    private readonly List<IndexedName> entries;
     private readonly ILookup<string, NameIndexEntry> byName;
 
     public FuzzyNameIndex(IEnumerable<NameIndexEntry> source)
     {
-        entries = source.Where(e => e.Name.Length > 0).ToList();
-        byName = entries.ToLookup(e => e.Name);
+        // Queries arrive with their leading article stripped, so names that start
+        // with one ("the navel") are also keyed by their bare form.
+        entries = source
+            .Where(e => e.Name.Length > 0)
+            .Select(e => new IndexedName(e, QueryNormalizer.StripLeadingArticle(e.Name)))
+            .ToList();
+        byName = entries.SelectMany(Keys).ToLookup(p => p.Key, p => p.Entry);
+    }
+
+    private static IEnumerable<(string Key, NameIndexEntry Entry)> Keys(IndexedName name)
+    {
+        yield return (name.Entry.Name, name.Entry);
+        if (name.Bare != name.Entry.Name)
+            yield return (name.Bare, name.Entry);
     }
 
     public int Count => entries.Count;
@@ -33,18 +48,18 @@ public sealed class FuzzyNameIndex
 
         if (matches.Count < limit)
         {
-            foreach (var entry in entries)
+            foreach (var (entry, bare) in entries)
             {
                 if (kind != null && entry.Kind != kind)
                     continue;
-                if (entry.Name.Length > term.Length && entry.Name.StartsWith(term, StringComparison.Ordinal))
+                if (IsPrefix(term, entry.Name) || IsPrefix(term, bare))
                     Add(matches, seen, entry, 0.85);
             }
         }
 
         if (matches.Count < limit)
         {
-            foreach (var entry in entries)
+            foreach (var (entry, _) in entries)
             {
                 if (kind != null && entry.Kind != kind)
                     continue;
@@ -56,14 +71,19 @@ public sealed class FuzzyNameIndex
         // Typo tier - only worth the scan when nothing better matched.
         if (matches.Count == 0)
         {
-            foreach (var entry in entries)
+            foreach (var (entry, bare) in entries)
             {
                 if (kind != null && entry.Kind != kind)
                     continue;
-                if (Math.Abs(entry.Name.Length - term.Length) > 2)
-                    continue;
 
-                var distance = BoundedLevenshtein(term, entry.Name, 2);
+                var distance = BoundedDistance(term, entry.Name);
+                if (bare != entry.Name)
+                {
+                    var bareDistance = BoundedDistance(term, bare);
+                    if (distance < 0 || (bareDistance >= 0 && bareDistance < distance))
+                        distance = bareDistance;
+                }
+
                 if (distance >= 0)
                     Add(matches, seen, entry, 0.6 - (0.05 * distance));
             }
@@ -82,6 +102,12 @@ public sealed class FuzzyNameIndex
         if (seen.Add((entry.Kind, entry.RowId)))
             matches.Add(new NameMatch(entry, score));
     }
+
+    private static bool IsPrefix(string term, string name) =>
+        name.Length > term.Length && name.StartsWith(term, StringComparison.Ordinal);
+
+    private static int BoundedDistance(string term, string name) =>
+        Math.Abs(name.Length - term.Length) > 2 ? -1 : BoundedLevenshtein(term, name, 2);
 
     // Returns edit distance if <= max, otherwise -1. Two rows of the usual DP table.
     private static int BoundedLevenshtein(string a, string b, int max)

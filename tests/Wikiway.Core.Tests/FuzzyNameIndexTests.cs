@@ -44,6 +44,28 @@ public class FuzzyNameIndexTests
     }
 
     [Fact]
+    public void ArticleLedNameExactMatchesItsBareForm()
+    {
+        var index = Index("the ultimate weapon");
+
+        var matches = index.Search("ultimate weapon");
+
+        Assert.Single(matches);
+        Assert.Equal(1.0, matches[0].Score);
+    }
+
+    [Fact]
+    public void ArticleLedNamePrefixMatchesItsBareForm()
+    {
+        var index = Index("the gold saucer");
+
+        var matches = index.Search("gold sau");
+
+        Assert.Single(matches);
+        Assert.Equal(0.85, matches[0].Score);
+    }
+
+    [Fact]
     public void SmallTypoStillMatches()
     {
         var index = Index("momodi modi");

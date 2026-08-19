@@ -56,6 +56,8 @@ public sealed class QueryNormalizer
             }
         }
 
+        lowered = StripLeadingArticle(lowered);
+
         // A typed leading phrase is a stronger signal than the tab.
         if (intent == QueryIntent.Unknown)
         {
@@ -71,6 +73,22 @@ public sealed class QueryNormalizer
         }
 
         return new NormalizedQuery(raw, lowered, intent, category);
+    }
+
+    private static readonly string[] Articles = ["the ", "an ", "a "];
+
+    // "how do i get an iron ingot" leaves "an iron ingot" after phrase stripping;
+    // a leading article only hurts matching, and names that begin with one
+    // ("The Navel") stay findable via the bare aliases in FuzzyNameIndex.
+    public static string StripLeadingArticle(string text)
+    {
+        foreach (var article in Articles)
+        {
+            if (text.StartsWith(article, StringComparison.OrdinalIgnoreCase))
+                return text[article.Length..].TrimStart();
+        }
+
+        return text;
     }
 
     private static string StripPunctuation(string text)

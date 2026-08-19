@@ -1,5 +1,6 @@
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
+using Wikiway.Core.Pipeline;
 using Wikiway.Core.Wiki;
 
 namespace Wikiway.Core.Providers;
@@ -59,7 +60,10 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
         if (results.Count > 0 && results[0] is WikiPageResult best)
         {
             if (query.Category == SearchCategory.Quests &&
-                string.Equals(best.Title, query.Term, StringComparison.OrdinalIgnoreCase))
+                string.Equals(
+                    QueryNormalizer.StripLeadingArticle(best.Title),
+                    QueryNormalizer.StripLeadingArticle(query.Term),
+                    StringComparison.OrdinalIgnoreCase))
             {
                 best = best with { Score = 1.0 };
                 results[0] = best;

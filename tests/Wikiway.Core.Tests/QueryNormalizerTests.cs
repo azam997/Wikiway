@@ -22,7 +22,7 @@ public class QueryNormalizerTests
     {
         var q = normalizer.Normalize("How do I unlock the gold saucer");
 
-        Assert.Equal("the gold saucer", q.Term);
+        Assert.Equal("gold saucer", q.Term);
         Assert.Equal(QueryIntent.Unlock, q.Intent);
     }
 
@@ -49,7 +49,32 @@ public class QueryNormalizerTests
     {
         var q = normalizer.Normalize("  The ULTIMATE Weapon?!  ");
 
-        Assert.Equal("the ultimate weapon", q.Term);
+        Assert.Equal("ultimate weapon", q.Term);
+    }
+
+    [Fact]
+    public void LeadingArticleAfterPhraseIsDropped()
+    {
+        var q = normalizer.Normalize("how do I get an iron ingot?");
+
+        Assert.Equal("iron ingot", q.Term);
+        Assert.Equal(QueryIntent.Acquisition, q.Intent);
+    }
+
+    [Fact]
+    public void ArticleAsWordPrefixIsKept()
+    {
+        var q = normalizer.Normalize("anemos");
+
+        Assert.Equal("anemos", q.Term);
+    }
+
+    [Fact]
+    public void BareArticleSurvivesUnstripped()
+    {
+        var q = normalizer.Normalize("the");
+
+        Assert.Equal("the", q.Term);
     }
 
     [Fact]
