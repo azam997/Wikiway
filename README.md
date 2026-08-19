@@ -7,6 +7,16 @@ Type `/wikiway where is momodi` (or just `/wikiway momodi`). Answers come from
 local game data first, and from [ffxiv.consolegameswiki.com](https://ffxiv.consolegameswiki.com/wiki/FF14_Wiki)
 when the game data alone isn't enough. Every result shows where it came from.
 
+## What leaves your machine
+
+Local game data answers most questions with no network access at all. When the
+wiki is consulted, the plugin sends the search term to
+`ffxiv.consolegameswiki.com` and nothing else: no character name, no world, no
+account identifier, no telemetry. Requests are throttled to one per second,
+carry a descriptive User-Agent, and are cached on disk under the plugin's
+config directory. Wiki lookups can be turned off entirely in the config window,
+which leaves the plugin fully offline.
+
 ## Building
 
 Requires .NET 10 SDK and a Dalamud dev install (comes with XIVLauncher after
@@ -61,7 +71,8 @@ The canary suite is the early-warning system for things that break under us:
 the bin folder first if you've built Release before - stale packager output
 gets swept into the zip otherwise. Submission to the official repo goes
 through a PR against [goatcorp/DalamudPluginsD17](https://github.com/goatcorp/DalamudPluginsD17)
-once the plugin has had some real-world soak time.
+once the plugin has had some real-world soak time - see
+[docs/dalamud-submission.md](docs/dalamud-submission.md) for the checklist.
 
 ## Layout
 
@@ -71,3 +82,15 @@ once the plugin has had some real-world soak time.
 - `src/Wikiway.Plugin` - the only project that touches Dalamud (UI, commands, wiring).
 - `tests/` - unit tests and the canary suite.
 - `docs/` - design notes and internal documentation.
+
+## License
+
+AGPL-3.0-or-later. See [LICENSE](LICENSE).
+
+## AI assistance
+
+Wikiway was written with AI assistance at the **Copilot** level as defined by
+the [Dalamud AI Usage Policy](https://dalamud.dev/plugin-publishing/ai-policy):
+the AI wrote most of the code, while planning, review, in-game testing and
+final responsibility for the result are the maintainer's. No assets in this
+repository are AI-generated.
