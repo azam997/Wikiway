@@ -9,7 +9,9 @@ environment with no internet access.
 
 ## What the repo already satisfies
 
-- Publicly clonable git repo over HTTP.
+- Git repo that clones over plain HTTP with no authentication. The repo is
+  private for now; flip it to public before opening the submission PR, since the
+  cloud builder clones it anonymously.
 - Open source (AGPL-3.0-or-later, `LICENSE` at the root). Closed-source plugins
   are never accepted.
 - `Dalamud.NET.Sdk/15.0.0` - the latest SDK - in `Wikiway.Plugin.csproj`,
