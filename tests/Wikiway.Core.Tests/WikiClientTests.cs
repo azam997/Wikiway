@@ -1,4 +1,5 @@
 using System.Net;
+using Wikiway.Core.Abstractions;
 using Wikiway.Core.Wiki;
 using Xunit;
 
@@ -75,6 +76,45 @@ public class WikiClientTests
         var html = await client.GetLeadSectionHtmlAsync("X", CancellationToken.None);
 
         Assert.Equal("<p>lead</p>", html);
+    }
+
+    [Fact]
+    public async Task SectionsParseIndexTitleAndLevel()
+    {
+        var handler = new CannedHandler("""
+            {"parse": {"title": "X", "sections": [
+              {"toclevel": 1, "line": "Acquisition", "index": "2"},
+              {"toclevel": 2, "line": "Transcluded", "index": "T-1"}
+            ]}}
+            """);
+        var client = new ConsoleGamesWikiClient(new HttpClient(handler));
+
+        var sections = await client.GetSectionsAsync("X", CancellationToken.None);
+
+        Assert.Equal(2, sections.Count);
+        Assert.Equal(new WikiSection("2", "Acquisition", 1), sections[0]);
+        Assert.Equal("T-1", sections[1].Index);
+    }
+
+    [Fact]
+    public async Task MissingSectionsArrayMeansEmptyNotThrow()
+    {
+        var handler = new CannedHandler("""{"parse": {"title": "X"}}""");
+        var client = new ConsoleGamesWikiClient(new HttpClient(handler));
+
+        Assert.Empty(await client.GetSectionsAsync("X", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SectionHtmlRequestsTheRequestedIndex()
+    {
+        var handler = new CannedHandler("""{"parse": {"text": {"*": "<p>body</p>"}}}""");
+        var client = new ConsoleGamesWikiClient(new HttpClient(handler));
+
+        var html = await client.GetSectionHtmlAsync("X", 4, CancellationToken.None);
+
+        Assert.Equal("<p>body</p>", html);
+        Assert.Contains("section=4", handler.LastRequest!.RequestUri!.Query);
     }
 
     [Fact]

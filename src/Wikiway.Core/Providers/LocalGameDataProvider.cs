@@ -30,7 +30,7 @@ public sealed class LocalGameDataProvider : ISearchProvider
         var index = await indexTask.WaitAsync(ct).ConfigureAwait(false);
 
         var results = new List<SearchResult>();
-        foreach (var match in index.Search(query.Term))
+        foreach (var match in index.Search(query.Term, kind: KindFilter(query.Category)))
         {
             ct.ThrowIfCancellationRequested();
 
@@ -50,6 +50,15 @@ public sealed class LocalGameDataProvider : ISearchProvider
         return new ProviderResult(Id, results, ProviderStatus.Ok);
     }
 
+    private static EntityKind? KindFilter(SearchCategory category) => category switch
+    {
+        SearchCategory.Items => EntityKind.Item,
+        SearchCategory.Quests => EntityKind.Quest,
+        SearchCategory.Npcs => EntityKind.Npc,
+        SearchCategory.Duties => EntityKind.Duty,
+        _ => null,
+    };
+
     private GameEntity? Resolve(NameIndexEntry entry) => entry.Kind switch
     {
         EntityKind.Item => store.GetItem(entry.RowId),
@@ -58,6 +67,7 @@ public sealed class LocalGameDataProvider : ISearchProvider
         EntityKind.Mount => store.GetMount(entry.RowId),
         EntityKind.Minion => store.GetMinion(entry.RowId),
         EntityKind.Achievement => store.GetAchievement(entry.RowId),
+        EntityKind.Duty => store.GetDuty(entry.RowId),
         _ => null,
     };
 }

@@ -45,19 +45,77 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
 
         if (results.Count > 0 && results[0] is WikiPageResult best)
         {
-            try
+            if (query.Category == SearchCategory.Quests &&
+                string.Equals(best.Title, query.Term, StringComparison.OrdinalIgnoreCase))
             {
-                var lead = await client.GetLeadSectionHtmlAsync(best.Title, ct).ConfigureAwait(false);
-                if (lead != null)
-                    results[0] = best with { Lead = Truncate(HtmlText.Strip(lead), 700) };
+                best = best with { Score = 1.0 };
+                results[0] = best;
             }
-            catch (HttpRequestException)
-            {
-                // The lead paragraph is a bonus; the hit stands on its own.
-            }
+
+            var sections = query.Category is SearchCategory.Items or SearchCategory.Duties
+                ? await TryFetchSectionsAsync(query.Category, best, ct).ConfigureAwait(false)
+                : null;
+
+            if (sections != null)
+                results.Insert(0, sections);
+            else
+                await TryAddLeadAsync(results, best, ct).ConfigureAwait(false);
         }
 
         return new ProviderResult(Id, results, ProviderStatus.Ok);
+    }
+
+    private async Task TryAddLeadAsync(List<SearchResult> results, WikiPageResult best, CancellationToken ct)
+    {
+        try
+        {
+            var lead = await client.GetLeadSectionHtmlAsync(best.Title, ct).ConfigureAwait(false);
+            if (lead != null)
+                results[0] = best with { Lead = Truncate(HtmlText.Strip(lead), 700) };
+        }
+        catch (HttpRequestException)
+        {
+            // The lead paragraph is a bonus; the hit stands on its own.
+        }
+    }
+
+    private async Task<WikiSectionsResult?> TryFetchSectionsAsync(
+        SearchCategory category, WikiPageResult page, CancellationToken ct)
+    {
+        try
+        {
+            var sections = await client.GetSectionsAsync(page.Title, ct).ConfigureAwait(false);
+            var picked = SectionExtractor.SelectSections(category, sections);
+
+            var bodies = new List<WikiSectionText>(picked.Count);
+            foreach (var section in picked)
+            {
+                var html = await client.GetSectionHtmlAsync(page.Title, int.Parse(section.Index), ct)
+                    .ConfigureAwait(false);
+                if (html == null)
+                    continue;
+
+                var text = HtmlText.Strip(html);
+                if (text.Length > 0)
+                    bodies.Add(new WikiSectionText(section.Title, Truncate(text, 1200)));
+            }
+
+            if (bodies.Count == 0)
+                return null;
+
+            return new WikiSectionsResult
+            {
+                Title = page.Title,
+                Source = page.Source,
+                PageUrl = page.PageUrl,
+                Sections = bodies,
+                Score = 0.95,
+            };
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
     }
 
     private static string Truncate(string text, int max)

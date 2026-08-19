@@ -4,6 +4,8 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Components;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
@@ -13,9 +15,19 @@ namespace Wikiway.Plugin.Windows;
 
 public class MainWindow : Window, IDisposable
 {
+    private static readonly (string Label, SearchCategory Value)[] Categories =
+    [
+        ("Items", SearchCategory.Items),
+        ("Quests", SearchCategory.Quests),
+        ("Duties", SearchCategory.Duties),
+        ("NPCs", SearchCategory.Npcs),
+        ("Other", SearchCategory.Other),
+    ];
+
     private readonly Plugin plugin;
 
     private string queryInput = string.Empty;
+    private int categoryIndex = Categories.Length - 1;
     private bool focusInput;
 
     private CancellationTokenSource? queryCts;
@@ -40,9 +52,12 @@ public class MainWindow : Window, IDisposable
         queryCts?.Dispose();
     }
 
-    public void SubmitQuery(string query)
+    public void SubmitQuery(string query) => SubmitQuery(query, SearchCategory.Other);
+
+    public void SubmitQuery(string query, SearchCategory category)
     {
         queryInput = query;
+        categoryIndex = Array.FindIndex(Categories, c => c.Value == category);
         RunQuery();
     }
 
@@ -56,6 +71,24 @@ public class MainWindow : Window, IDisposable
             focusInput = false;
         }
 
+        ImGui.SetNextItemWidth(90 * ImGuiHelpers.GlobalScale);
+        if (ImGui.BeginCombo("##wikiway-category", Categories[categoryIndex].Label))
+        {
+            for (var i = 0; i < Categories.Length; i++)
+            {
+                if (ImGui.Selectable(Categories[i].Label, i == categoryIndex))
+                    categoryIndex = i;
+            }
+
+            ImGui.EndCombo();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "Narrows the search: Items focuses on acquisition, Quests on unlocks, " +
+            "Duties on guides, NPCs on locations. Other searches everything.");
+
+        ImGui.SameLine();
         ImGui.SetNextItemWidth(-70);
         var submitted = ImGui.InputTextWithHint("##wikiway-query", "where is momodi...", ref queryInput, 256,
             ImGuiInputTextFlags.EnterReturnsTrue);
@@ -116,7 +149,8 @@ public class MainWindow : Window, IDisposable
 
         response = null;
         error = null;
-        pending = Task.Run(() => plugin.Pipeline.ExecuteAsync(query, ct), ct);
+        var category = Categories[categoryIndex].Value;
+        pending = Task.Run(() => plugin.Pipeline.ExecuteAsync(query, category, ct), ct);
     }
 
     private void DrawResults(QueryResponse result)
@@ -137,6 +171,9 @@ public class MainWindow : Window, IDisposable
                     break;
                 case WikiPageResult wiki:
                     DrawWikiResult(wiki);
+                    break;
+                case WikiSectionsResult sections:
+                    DrawWikiSections(sections);
                     break;
             }
 
@@ -165,6 +202,7 @@ public class MainWindow : Window, IDisposable
                 Header(item.Name, item.Category.Length > 0 ? item.Category : "Item");
                 if (item.Description.Length > 0)
                     ImGui.TextWrapped(item.Description);
+                ImGui.TextDisabled(item.Marketable ? "Marketboard: yes" : "Marketboard: no");
                 break;
 
             case QuestEntity quest:
@@ -181,6 +219,16 @@ public class MainWindow : Window, IDisposable
 
             case MinionEntity minion:
                 Header(minion.Name, "Minion");
+                break;
+
+            case DutyEntity duty:
+                Header(duty.Name, duty.ContentType.Length > 0 ? duty.ContentType : "Duty");
+                if (duty.ClassJobLevel > 0)
+                    ImGui.TextDisabled(duty.ItemLevel > 0
+                        ? $"Level {duty.ClassJobLevel} · ilvl {duty.ItemLevel}"
+                        : $"Level {duty.ClassJobLevel}");
+                if (duty.Solo)
+                    ImGui.TextDisabled("Solo duty");
                 break;
 
             case AchievementEntity achievement:
@@ -215,6 +263,24 @@ public class MainWindow : Window, IDisposable
             ImGui.TextWrapped(wiki.Lead);
         else if (wiki.Snippet != null)
             ImGui.TextWrapped(wiki.Snippet);
+    }
+
+    private void DrawWikiSections(WikiSectionsResult wiki)
+    {
+        ImGui.TextUnformatted(wiki.Title);
+        ImGui.SameLine();
+        ImGui.TextDisabled(wiki.Source.Label);
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"Open##wikisec{wiki.Title}"))
+            BrowserOpener.Open(wiki.PageUrl);
+
+        for (var i = 0; i < wiki.Sections.Count; i++)
+        {
+            var section = wiki.Sections[i];
+            var flags = i == 0 ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
+            if (ImGui.CollapsingHeader($"{section.Heading}##sec{wiki.Title}{i}", flags))
+                ImGui.TextWrapped(section.Text);
+        }
     }
 
     private static void DrawProviderFooter(QueryResponse result)

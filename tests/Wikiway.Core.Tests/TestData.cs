@@ -23,5 +23,5 @@ internal static class TestData
 
     public static NpcEntity Npc(string name = "Momodi") => new(1, name, null);
 
-    public static ItemEntity Item(string name = "Iron Ingot") => new(2, name, "Metal", "An ingot of smelted iron.");
+    public static ItemEntity Item(string name = "Iron Ingot") => new(2, name, "Metal", "An ingot of smelted iron.", true);
 }

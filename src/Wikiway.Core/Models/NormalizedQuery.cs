@@ -9,4 +9,14 @@ public enum QueryIntent
     General,
 }
 
-public sealed record NormalizedQuery(string Raw, string Term, QueryIntent Intent);
+public enum SearchCategory
+{
+    Other,
+    Items,
+    Quests,
+    Duties,
+    Npcs,
+}
+
+public sealed record NormalizedQuery(
+    string Raw, string Term, QueryIntent Intent, SearchCategory Category = SearchCategory.Other);

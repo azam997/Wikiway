@@ -39,7 +39,7 @@ public sealed class QueryNormalizer
         ("who's", QueryIntent.General),
     ];
 
-    public NormalizedQuery Normalize(string raw)
+    public NormalizedQuery Normalize(string raw, SearchCategory category = SearchCategory.Other)
     {
         var text = StripPunctuation(raw).Trim();
         var lowered = text.ToLowerInvariant();
@@ -56,7 +56,20 @@ public sealed class QueryNormalizer
             }
         }
 
-        return new NormalizedQuery(raw, lowered, intent);
+        // A typed leading phrase is a stronger signal than the dropdown.
+        if (intent == QueryIntent.Unknown)
+        {
+            intent = category switch
+            {
+                SearchCategory.Items => QueryIntent.Acquisition,
+                SearchCategory.Quests => QueryIntent.Unlock,
+                SearchCategory.Npcs => QueryIntent.Location,
+                SearchCategory.Duties => QueryIntent.General,
+                _ => QueryIntent.Unknown,
+            };
+        }
+
+        return new NormalizedQuery(raw, lowered, intent, category);
     }
 
     private static string StripPunctuation(string text)

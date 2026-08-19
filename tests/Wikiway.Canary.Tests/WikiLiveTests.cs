@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Wikiway.Core.Models;
 using Wikiway.Core.Wiki;
 using Xunit;
 
@@ -60,6 +61,31 @@ public class WikiLiveTests : IDisposable
         watch.Stop();
 
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
+    }
+
+    // These two are the drift alarms for the wiki's heading conventions: if item or
+    // duty pages stop using headings our extractor recognizes, they fail loudly.
+    [Fact]
+    public async Task ItemPageSectionsSatisfyTheExtractor()
+    {
+        var sections = await Live(() => client.GetSectionsAsync("Iron Ingot", CancellationToken.None));
+
+        var picked = SectionExtractor.SelectSections(SearchCategory.Items, sections);
+        Assert.NotEmpty(picked);
+
+        var html = await Live(() =>
+            client.GetSectionHtmlAsync("Iron Ingot", int.Parse(picked[0].Index), CancellationToken.None));
+        Assert.NotNull(html);
+        Assert.True(HtmlText.Strip(html).Length > 0, "section body stripped to nothing");
+    }
+
+    [Fact]
+    public async Task DutyPageSectionsSatisfyTheExtractor()
+    {
+        var sections = await Live(() => client.GetSectionsAsync("The Bowl of Embers", CancellationToken.None));
+
+        var picked = SectionExtractor.SelectSections(SearchCategory.Duties, sections);
+        Assert.NotEmpty(picked);
     }
 
     private static async Task<T> Live<T>(Func<Task<T>> action)

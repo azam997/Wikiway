@@ -7,10 +7,14 @@ namespace Wikiway.GameData;
 public sealed class LuminaGameDataStore : IGameDataStore
 {
     private const byte LevelObjectTypeEventNpc = 8;
+    private const uint ContentTypeQuestBattles = 7;
+    private const uint ContentTypeMaskedCarnivale = 27;
 
     private readonly Lumina.GameData gameData;
     private readonly Lock levelLock = new();
+    private readonly Lock dutyLock = new();
     private Dictionary<uint, Level>? npcLevels;
+    private Dictionary<uint, uint>? dutyByTerritory;
 
     public LuminaGameDataStore(Lumina.GameData gameData)
     {
@@ -39,6 +43,9 @@ public sealed class LuminaGameDataStore : IGameDataStore
         foreach (var row in gameData.GetExcelSheet<Achievement>()!)
             AddName(names, EntityKind.Achievement, row.RowId, row.Name.ExtractText());
 
+        foreach (var row in gameData.GetExcelSheet<ContentFinderCondition>()!)
+            AddName(names, EntityKind.Duty, row.RowId, row.Name.ExtractText());
+
         return names;
     }
 
@@ -58,7 +65,8 @@ public sealed class LuminaGameDataStore : IGameDataStore
             rowId,
             row.Value.Name.ExtractText(),
             row.Value.ItemUICategory.ValueNullable?.Name.ExtractText() ?? "",
-            row.Value.Description.ExtractText());
+            row.Value.Description.ExtractText(),
+            row.Value.ItemSearchCategory.RowId != 0);
     }
 
     public NpcEntity? GetNpc(uint rowId)
@@ -121,6 +129,55 @@ public sealed class LuminaGameDataStore : IGameDataStore
             row.Value.Name.ExtractText(),
             row.Value.Description.ExtractText(),
             row.Value.AchievementCategory.ValueNullable?.Name.ExtractText() ?? "");
+    }
+
+    public DutyEntity? GetDuty(uint rowId)
+    {
+        var row = gameData.GetExcelSheet<ContentFinderCondition>()!.GetRowOrDefault(rowId);
+        if (row == null || row.Value.Name.IsEmpty)
+            return null;
+
+        var duty = row.Value;
+
+        // ContentMemberType is all zeroes for single-player content, so party size
+        // can't identify it; the content type can - quest battles and the Carnivale.
+        var solo = duty.ContentType.RowId is ContentTypeQuestBattles or ContentTypeMaskedCarnivale;
+
+        return new DutyEntity(
+            rowId,
+            duty.Name.ExtractText(),
+            duty.ContentType.ValueNullable?.Name.ExtractText() ?? "",
+            duty.ClassJobLevelRequired,
+            duty.ItemLevelRequired,
+            solo,
+            duty.HighEndDuty,
+            duty.TerritoryType.RowId);
+    }
+
+    public DutyEntity? FindDutyByTerritory(uint territoryTypeId)
+    {
+        var lookup = dutyByTerritory;
+        if (lookup == null)
+        {
+            lock (dutyLock)
+            {
+                lookup = dutyByTerritory ??= BuildDutyTerritoryLookup();
+            }
+        }
+
+        return lookup.TryGetValue(territoryTypeId, out var rowId) ? GetDuty(rowId) : null;
+    }
+
+    private Dictionary<uint, uint> BuildDutyTerritoryLookup()
+    {
+        var lookup = new Dictionary<uint, uint>();
+        foreach (var duty in gameData.GetExcelSheet<ContentFinderCondition>()!)
+        {
+            if (duty.TerritoryType.RowId != 0 && !duty.Name.IsEmpty)
+                lookup.TryAdd(duty.TerritoryType.RowId, duty.RowId);
+        }
+
+        return lookup;
     }
 
     private MapLocation? FindLocation(uint npcRowId)

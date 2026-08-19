@@ -7,7 +7,8 @@ namespace Wikiway.Core.Tests;
 
 public class WikiProviderTests
 {
-    private static NormalizedQuery Query(string term) => new(term, term, QueryIntent.Unknown);
+    private static NormalizedQuery Query(string term, SearchCategory category = SearchCategory.Other) =>
+        new(term, term, QueryIntent.Unknown, category);
 
     [Fact]
     public async Task MapsHitsToWikiResultsInRelevanceOrder()
@@ -41,6 +42,49 @@ public class WikiProviderTests
         var second = Assert.IsType<WikiPageResult>(result.Results[1]);
         Assert.Equal("lead of First", first.Lead);
         Assert.Null(second.Lead);
+    }
+
+    [Fact]
+    public async Task ItemsCategoryEmitsSectionsFromMatchingHeadings()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(new WikiSearchHit("Iron Ingot", 1, ""))
+        {
+            Sections = [new WikiSection("2", "Acquisition", 1), new WikiSection("5", "Used For", 1)],
+        });
+
+        var result = await provider.SearchAsync(Query("iron ingot", SearchCategory.Items), CancellationToken.None);
+
+        var sections = Assert.IsType<WikiSectionsResult>(result.Results[0]);
+        var section = Assert.Single(sections.Sections);
+        Assert.Equal("Acquisition", section.Heading);
+        Assert.Contains("section 2 of Iron Ingot", section.Text);
+        Assert.IsType<WikiPageResult>(result.Results[1]);
+    }
+
+    [Fact]
+    public async Task NoMatchingSectionsFallsBackToLead()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(new WikiSearchHit("Iron Ingot", 1, ""))
+        {
+            Sections = [new WikiSection("1", "Lore", 1)],
+        });
+
+        var result = await provider.SearchAsync(Query("iron ingot", SearchCategory.Items), CancellationToken.None);
+
+        var first = Assert.IsType<WikiPageResult>(result.Results[0]);
+        Assert.Equal("lead of Iron Ingot", first.Lead);
+    }
+
+    [Fact]
+    public async Task QuestsCategoryBoostsExactTitleToFullScore()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
+            new WikiSearchHit("The Ultimate Weapon", 1, "")));
+
+        var result = await provider.SearchAsync(
+            Query("the ultimate weapon", SearchCategory.Quests), CancellationToken.None);
+
+        Assert.Equal(1.0, result.Results[0].Score);
     }
 
     [Fact]
@@ -80,6 +124,8 @@ public class WikiProviderTests
 
     private sealed class StubWikiClient(params WikiSearchHit[] hits) : IWikiApiClient
     {
+        public IReadOnlyList<WikiSection> Sections { get; init; } = [];
+
         public Uri PageUrl(string title) =>
             new("https://ffxiv.consolegameswiki.com/wiki/" + title.Replace(' ', '_'));
 
@@ -91,5 +137,11 @@ public class WikiProviderTests
 
         public Task<string?> GetPagePlainTextAsync(string pageTitle, CancellationToken ct) =>
             Task.FromResult<string?>($"plain text of {pageTitle}");
+
+        public Task<IReadOnlyList<WikiSection>> GetSectionsAsync(string pageTitle, CancellationToken ct) =>
+            Task.FromResult(Sections);
+
+        public Task<string?> GetSectionHtmlAsync(string pageTitle, int sectionIndex, CancellationToken ct) =>
+            Task.FromResult<string?>($"<p>section {sectionIndex} of {pageTitle}</p>");
     }
 }

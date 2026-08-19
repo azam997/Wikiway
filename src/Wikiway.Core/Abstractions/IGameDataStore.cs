@@ -12,6 +12,9 @@ public interface IGameDataStore
     MountEntity? GetMount(uint rowId);
     MinionEntity? GetMinion(uint rowId);
     AchievementEntity? GetAchievement(uint rowId);
+    DutyEntity? GetDuty(uint rowId);
+
+    DutyEntity? FindDutyByTerritory(uint territoryTypeId);
 }
 
 public enum EntityKind
@@ -22,6 +25,7 @@ public enum EntityKind
     Mount,
     Minion,
     Achievement,
+    Duty,
 }
 
 public sealed record NameIndexEntry(EntityKind Kind, uint RowId, string Name);

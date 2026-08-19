@@ -69,4 +69,31 @@ public class FuzzyNameIndexTests
 
         Assert.Equal(8, index.Search("item", limit: 8).Count);
     }
+
+    [Fact]
+    public void KindFilterExcludesOtherKinds()
+    {
+        var index = new FuzzyNameIndex(
+        [
+            new NameIndexEntry(EntityKind.Item, 1, "iron ingot"),
+            new NameIndexEntry(EntityKind.Npc, 2, "iron ingot"),
+        ]);
+
+        var matches = index.Search("iron ingot", kind: EntityKind.Item);
+
+        Assert.Single(matches);
+        Assert.Equal(EntityKind.Item, matches[0].Entry.Kind);
+    }
+
+    [Fact]
+    public void NullKindMatchesEverything()
+    {
+        var index = new FuzzyNameIndex(
+        [
+            new NameIndexEntry(EntityKind.Item, 1, "iron ingot"),
+            new NameIndexEntry(EntityKind.Npc, 2, "iron ingot"),
+        ]);
+
+        Assert.Equal(2, index.Search("iron ingot").Count);
+    }
 }

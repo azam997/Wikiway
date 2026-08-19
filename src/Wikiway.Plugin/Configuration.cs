@@ -10,6 +10,9 @@ public class Configuration : IPluginConfiguration
 
     public bool WikiSearchEnabled { get; set; } = true;
     public int MaxWikiResults { get; set; } = 5;
+    public bool ContextMenuEnabled { get; set; } = true;
+    public bool SoloDutyToastEnabled { get; set; } = true;
+    public bool TutorialSeen { get; set; } = false;
 
     public void Save() => Plugin.PluginInterface.SavePluginConfig(this);
 }

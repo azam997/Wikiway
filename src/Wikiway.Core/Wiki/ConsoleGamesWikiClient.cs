@@ -43,9 +43,12 @@ public sealed class ConsoleGamesWikiClient : IWikiApiClient
         return hits;
     }
 
-    public async Task<string?> GetLeadSectionHtmlAsync(string pageTitle, CancellationToken ct)
+    public Task<string?> GetLeadSectionHtmlAsync(string pageTitle, CancellationToken ct) =>
+        GetSectionHtmlAsync(pageTitle, 0, ct);
+
+    public async Task<string?> GetSectionHtmlAsync(string pageTitle, int sectionIndex, CancellationToken ct)
     {
-        var url = $"{ApiBase}?action=parse&page={Uri.EscapeDataString(pageTitle)}&prop=text&section=0&redirects=1&format=json";
+        var url = $"{ApiBase}?action=parse&page={Uri.EscapeDataString(pageTitle)}&prop=text&section={sectionIndex}&redirects=1&format=json";
         using var doc = await GetJsonAsync(url, ct).ConfigureAwait(false);
 
         if (!doc.RootElement.TryGetProperty("parse", out var parse) ||
@@ -54,6 +57,28 @@ public sealed class ConsoleGamesWikiClient : IWikiApiClient
 
         // parse.text is { "*": "<html>" } in the default (non-formatversion=2) output.
         return text.TryGetProperty("*", out var html) ? html.GetString() : text.GetString();
+    }
+
+    public async Task<IReadOnlyList<WikiSection>> GetSectionsAsync(string pageTitle, CancellationToken ct)
+    {
+        var url = $"{ApiBase}?action=parse&page={Uri.EscapeDataString(pageTitle)}&prop=sections&redirects=1&format=json";
+        using var doc = await GetJsonAsync(url, ct).ConfigureAwait(false);
+
+        if (!doc.RootElement.TryGetProperty("parse", out var parse) ||
+            !parse.TryGetProperty("sections", out var sections))
+            return [];
+
+        var list = new List<WikiSection>();
+        foreach (var entry in sections.EnumerateArray())
+        {
+            var index = entry.TryGetProperty("index", out var i) ? i.GetString() ?? "" : "";
+            var line = entry.TryGetProperty("line", out var l) ? l.GetString() ?? "" : "";
+            var level = entry.TryGetProperty("toclevel", out var t) ? t.GetInt32() : 0;
+            if (line.Length > 0)
+                list.Add(new WikiSection(index, HtmlText.Strip(line), level));
+        }
+
+        return list;
     }
 
     public async Task<string?> GetPagePlainTextAsync(string pageTitle, CancellationToken ct)

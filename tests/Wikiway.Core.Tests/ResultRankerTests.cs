@@ -10,8 +10,10 @@ public class ResultRankerTests
 {
     private readonly ResultRanker ranker = new();
 
-    private static NormalizedQuery Query(QueryIntent intent = QueryIntent.Unknown) =>
-        new("raw", "term", intent);
+    private static NormalizedQuery Query(
+        QueryIntent intent = QueryIntent.Unknown,
+        SearchCategory category = SearchCategory.Other) =>
+        new("raw", "term", intent, category);
 
     [Fact]
     public void ExactLocalEntityBeatsWikiHit()
@@ -45,6 +47,30 @@ public class ResultRankerTests
 
         var first = Assert.IsType<EntityCardResult>(merged[0]);
         Assert.IsType<NpcEntity>(first.Entity);
+    }
+
+    [Fact]
+    public void ExplicitCategoryPrefersMatchingEntity()
+    {
+        var local = new ProviderResult("local",
+            [Card(Npc(), 0.8), Card(Item(), 0.8)], ProviderStatus.Ok);
+
+        var merged = ranker.Merge(Query(category: SearchCategory.Items), [local]);
+
+        var first = Assert.IsType<EntityCardResult>(merged[0]);
+        Assert.IsType<ItemEntity>(first.Entity);
+    }
+
+    [Fact]
+    public void ExplicitCategoryBeatsInferredIntent()
+    {
+        var local = new ProviderResult("local",
+            [Card(Npc(), 0.8), Card(Item(), 0.8)], ProviderStatus.Ok);
+
+        var merged = ranker.Merge(Query(QueryIntent.Location, SearchCategory.Items), [local]);
+
+        var first = Assert.IsType<EntityCardResult>(merged[0]);
+        Assert.IsType<ItemEntity>(first.Entity);
     }
 
     [Fact]

@@ -28,9 +28,9 @@ public sealed class QueryOrchestrator : IQueryPipeline
         this.providerTimeout = providerTimeout ?? TimeSpan.FromSeconds(15);
     }
 
-    public async Task<QueryResponse> ExecuteAsync(string rawQuery, CancellationToken ct)
+    public async Task<QueryResponse> ExecuteAsync(string rawQuery, SearchCategory category, CancellationToken ct)
     {
-        var query = normalizer.Normalize(rawQuery);
+        var query = normalizer.Normalize(rawQuery, category);
 
         var searches = providers
             .Select(p => p.IsAvailable

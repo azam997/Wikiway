@@ -69,4 +69,31 @@ public class QueryNormalizerTests
 
         Assert.Equal("Where is Momodi?", q.Raw);
     }
+
+    [Fact]
+    public void CategorySuppliesDefaultIntent()
+    {
+        var q = normalizer.Normalize("iron ingot", SearchCategory.Items);
+
+        Assert.Equal(QueryIntent.Acquisition, q.Intent);
+        Assert.Equal(SearchCategory.Items, q.Category);
+    }
+
+    [Fact]
+    public void LeadingPhraseBeatsCategoryDefault()
+    {
+        var q = normalizer.Normalize("where is momodi", SearchCategory.Items);
+
+        Assert.Equal(QueryIntent.Location, q.Intent);
+        Assert.Equal(SearchCategory.Items, q.Category);
+    }
+
+    [Fact]
+    public void NoCategoryLeavesIntentUnknown()
+    {
+        var q = normalizer.Normalize("momodi", SearchCategory.Other);
+
+        Assert.Equal(QueryIntent.Unknown, q.Intent);
+        Assert.Equal(SearchCategory.Other, q.Category);
+    }
 }

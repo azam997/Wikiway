@@ -25,3 +25,12 @@ public sealed record WikiPageResult : SearchResult
 
     public string? Lead { get; init; }
 }
+
+public sealed record WikiSectionText(string Heading, string Text);
+
+public sealed record WikiSectionsResult : SearchResult
+{
+    public required Uri PageUrl { get; init; }
+
+    public required IReadOnlyList<WikiSectionText> Sections { get; init; }
+}

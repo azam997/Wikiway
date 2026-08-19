@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.Windowing;
 
 namespace Wikiway.Plugin.Windows;
@@ -37,8 +38,32 @@ public class ConfigWindow : Window
             config.Save();
         }
 
+        var contextMenu = config.ContextMenuEnabled;
+        if (ImGui.Checkbox("Add \"Look up on Wikiway\" to right-click menus", ref contextMenu))
+        {
+            config.ContextMenuEnabled = contextMenu;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker("Shows on inventory items, chat item links, and NPCs.");
+
+        var soloToast = config.SoloDutyToastEnabled;
+        if (ImGui.Checkbox("Offer a duty guide when entering a solo duty", ref soloToast))
+        {
+            config.SoloDutyToastEnabled = soloToast;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker("A small notification appears bottom-right; click it to open the guide.");
+
         ImGui.Separator();
         if (ImGui.Button("Clear wiki cache"))
             _ = Task.Run(() => plugin.CacheStore.ClearAsync(CancellationToken.None));
+
+        ImGui.SameLine();
+        if (ImGui.Button("Show tutorial"))
+            plugin.ShowTutorial();
     }
 }

@@ -118,6 +118,49 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.False(string.IsNullOrEmpty(achievement.Description));
     }
 
+    [Fact]
+    public void DutyNamesAreIndexed()
+    {
+        var store = fixture.Store();
+
+        Assert.True(Count(store.GetAllNames(), EntityKind.Duty) > 800, "duty names collapsed");
+    }
+
+    [Fact]
+    public void BowlOfEmbersResolvesAndRoundTripsItsTerritory()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Duty && n.Name == "the bowl of embers");
+        Assert.NotNull(entry);
+
+        var duty = store.GetDuty(entry.RowId);
+        Assert.NotNull(duty);
+        Assert.False(string.IsNullOrEmpty(duty.ContentType));
+        Assert.False(duty.Solo);
+        Assert.True(duty.ClassJobLevel > 0);
+
+        var roundTrip = store.FindDutyByTerritory(duty.TerritoryTypeId);
+        Assert.NotNull(roundTrip);
+        Assert.Equal(duty.RowId, roundTrip.RowId);
+    }
+
+    // Pins the content-type heuristic: 0 means the column read broke,
+    // thousands means it went over-broad. 116 as of 7.3 (84 QB + 32 Carnivale).
+    [Fact]
+    public void SoloDutyDetectionLandsInAPlausibleBand()
+    {
+        var store = fixture.Store();
+
+        var solos = store.GetAllNames()
+            .Where(n => n.Kind == EntityKind.Duty)
+            .Select(n => store.GetDuty(n.RowId))
+            .Count(d => d is { Solo: true });
+
+        Assert.InRange(solos, 80, 1000);
+    }
+
     private static int Count(IReadOnlyList<NameIndexEntry> names, EntityKind kind) =>
         names.Count(n => n.Kind == kind);
 }

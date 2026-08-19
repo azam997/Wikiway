@@ -17,7 +17,7 @@ public sealed class FuzzyNameIndex
 
     public int Count => entries.Count;
 
-    public IReadOnlyList<NameMatch> Search(string term, int limit = 8)
+    public IReadOnlyList<NameMatch> Search(string term, int limit = 8, EntityKind? kind = null)
     {
         if (term.Length == 0)
             return [];
@@ -26,12 +26,17 @@ public sealed class FuzzyNameIndex
         var seen = new HashSet<(EntityKind, uint)>();
 
         foreach (var entry in byName[term])
-            Add(matches, seen, entry, 1.0);
+        {
+            if (kind == null || entry.Kind == kind)
+                Add(matches, seen, entry, 1.0);
+        }
 
         if (matches.Count < limit)
         {
             foreach (var entry in entries)
             {
+                if (kind != null && entry.Kind != kind)
+                    continue;
                 if (entry.Name.Length > term.Length && entry.Name.StartsWith(term, StringComparison.Ordinal))
                     Add(matches, seen, entry, 0.85);
             }
@@ -41,6 +46,8 @@ public sealed class FuzzyNameIndex
         {
             foreach (var entry in entries)
             {
+                if (kind != null && entry.Kind != kind)
+                    continue;
                 if (entry.Name.Length > term.Length && entry.Name.Contains(term, StringComparison.Ordinal))
                     Add(matches, seen, entry, 0.7);
             }
@@ -51,6 +58,8 @@ public sealed class FuzzyNameIndex
         {
             foreach (var entry in entries)
             {
+                if (kind != null && entry.Kind != kind)
+                    continue;
                 if (Math.Abs(entry.Name.Length - term.Length) > 2)
                     continue;
 
