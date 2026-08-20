@@ -17,11 +17,6 @@ public static class SectionExtractor
         "obtain", "source", "drop", "treasure", "desynth", "reward",
     ];
 
-    private static readonly string[] DutyKeywords =
-    [
-        "guide", "strategy", "walkthrough", "boss", "phase", "mechanic", "tips", "fight",
-    ];
-
     private static readonly string[] UnlockKeywords =
     [
         "unlock", "access", "requirement", "entry", "getting started", "overview",
@@ -32,8 +27,7 @@ public static class SectionExtractor
     {
         var keywords = category switch
         {
-            SearchCategory.Items => ItemKeywords,
-            SearchCategory.Duties => DutyKeywords,
+            SearchCategory.Items or SearchCategory.Gathering => ItemKeywords,
             SearchCategory.Unlockables => UnlockKeywords,
             _ => null,
         };

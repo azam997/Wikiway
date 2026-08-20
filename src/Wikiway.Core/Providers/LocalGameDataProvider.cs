@@ -12,11 +12,13 @@ public sealed class LocalGameDataProvider : ISearchProvider
     private static readonly Citation GameDataSource = new("Game data");
 
     private readonly IGameDataStore store;
+    private readonly Func<uint, bool>? sceneQuestVisible;
     private readonly Task<FuzzyNameIndex> indexTask;
 
-    public LocalGameDataProvider(IGameDataStore store)
+    public LocalGameDataProvider(IGameDataStore store, Func<uint, bool>? sceneQuestVisible = null)
     {
         this.store = store;
+        this.sceneQuestVisible = sceneQuestVisible;
         // Building the index walks every sheet, so it starts warming immediately
         // rather than stalling the first query.
         indexTask = Task.Run(() => new FuzzyNameIndex(store.GetAllNames()));
@@ -48,24 +50,25 @@ public sealed class LocalGameDataProvider : ISearchProvider
             });
         }
 
-        return new ProviderResult(Id, EntityGrouper.Collapse(results), ProviderStatus.Ok);
+        return new ProviderResult(Id, EntityGrouper.Collapse(results, sceneQuestVisible), ProviderStatus.Ok);
     }
 
-    // Duties still cover unlockables - a raid is a duty whether or not a side
-    // quest gates it. Unlockables is the narrower lens.
+    // Items still cover gatherables - ore is an item whether or not a node
+    // spawns it. Gathering is the narrower lens; duties have no lens of their
+    // own anymore and ride the unfiltered Other search.
     private static EntityKind[]? KindFilter(SearchCategory category) => category switch
     {
-        SearchCategory.Items => [EntityKind.Item],
+        SearchCategory.Items => [EntityKind.Item, EntityKind.Gatherable],
         SearchCategory.Quests => [EntityKind.Quest],
         SearchCategory.Npcs => [EntityKind.Npc],
-        SearchCategory.Duties => [EntityKind.Duty, EntityKind.Unlockable],
+        SearchCategory.Gathering => [EntityKind.Gatherable],
         SearchCategory.Unlockables => [EntityKind.Unlockable],
         _ => null,
     };
 
     private GameEntity? Resolve(NameIndexEntry entry) => entry.Kind switch
     {
-        EntityKind.Item => store.GetItem(entry.RowId),
+        EntityKind.Item or EntityKind.Gatherable => store.GetItem(entry.RowId),
         EntityKind.Npc => store.GetNpc(entry.RowId),
         EntityKind.Quest => store.GetQuest(entry.RowId),
         EntityKind.Mount => store.GetMount(entry.RowId),

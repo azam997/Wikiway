@@ -17,7 +17,7 @@ public class ConfigWindow : Window
         this.plugin = plugin;
         config = plugin.Configuration;
 
-        Size = new Vector2(340, 170);
+        Size = new Vector2(340, 200);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -82,6 +82,20 @@ public class ConfigWindow : Window
             "Adds a tab on expanded NPC cards listing quest scenes the NPC appears in, " +
             "grouped by expansion. Groups stay collapsed until clicked, so quest names " +
             "are never shown unprompted.");
+
+        var spoilers = config.SpoilerProtectionEnabled;
+        if (ImGui.Checkbox("Hide spoilers past your MSQ progress", ref spoilers))
+        {
+            config.SpoilerProtectionEnabled = spoilers;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "Uses your character's quest progress: cutscene appearances you haven't " +
+            "reached are hidden, duties and Main Scenario quest names beyond your " +
+            "progress are blurred with a click-to-reveal, and unlock chains gain " +
+            "checkmarks on completed steps. No effect while logged out.");
 
         var questPicker = config.ActiveQuestPickerEnabled;
         if (ImGui.Checkbox("Show an active-quest picker next to search", ref questPicker))

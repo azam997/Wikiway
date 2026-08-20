@@ -78,10 +78,14 @@ public sealed record DutyEntity(
 {
     public QuestLink? UnlockQuest { get; init; }
     public QuestLink? ChainStart { get; init; }
+    public MsqGate? MsqGate { get; init; }
     public bool FieldArea { get; init; }
 
     // Gated behind a quest outside the main scenario - content you can miss.
     public bool Optional { get; init; }
 }
+
+// The most advanced main-scenario quest a duty's unlock chain passes through.
+public sealed record MsqGate(QuestLink Quest, string Version);
 
 public sealed record MapLocation(uint TerritoryTypeId, uint MapId, float MapX, float MapY, string ZoneName);

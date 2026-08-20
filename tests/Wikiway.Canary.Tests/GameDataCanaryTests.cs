@@ -36,6 +36,7 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.True(Count(names, EntityKind.Minion) > 400, "minion names collapsed");
         Assert.True(Count(names, EntityKind.Achievement) > 2_000, "achievement names collapsed");
         Assert.True(Count(names, EntityKind.Unlockable) > 150, "unlockable names collapsed");
+        Assert.True(Count(names, EntityKind.Gatherable) > 500, "gatherable names collapsed");
     }
 
     [Fact]
@@ -131,7 +132,7 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         var store = fixture.Store();
 
         var ironOre = store.GetAllNames()
-            .FirstOrDefault(n => n.Kind == EntityKind.Item && n.Name == "iron ore");
+            .FirstOrDefault(n => n.Kind == EntityKind.Gatherable && n.Name == "iron ore");
         Assert.NotNull(ironOre);
 
         var item = store.GetItem(ironOre.RowId);
@@ -230,6 +231,59 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.NotNull(duty);
         Assert.False(duty.Optional);
         Assert.Equal("It's Probably Pirates", duty.UnlockQuest?.Name);
+    }
+
+    // Spoiler gating pin: an MSQ-unlocked dungeon's gate is the unlock quest
+    // itself.
+    [Fact]
+    public void SastashaMsqGateIsItsOwnUnlockQuest()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Duty && n.Name == "sastasha");
+        Assert.NotNull(entry);
+
+        var duty = store.GetDuty(entry.RowId);
+        Assert.NotNull(duty);
+        Assert.NotNull(duty.MsqGate);
+        Assert.Equal(duty.UnlockQuest?.RowId, duty.MsqGate.Quest.RowId);
+        Assert.Equal("2.x", duty.MsqGate.Version);
+    }
+
+    // The Wanderer's Palace chains back through the Zodiac relic line and
+    // never touches MSQ (probed: ends at "Up in Arms"), so its gate is null
+    // and spoiler gating fails open for it.
+    [Fact]
+    public void WanderersPalaceHasNoMsqGate()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Unlockable && n.Name == "the wanderer's palace");
+        Assert.NotNull(entry);
+
+        var duty = store.GetDuty(entry.RowId);
+        Assert.NotNull(duty);
+        Assert.Null(duty.MsqGate);
+    }
+
+    // A side-quest-unlocked duty whose chain does fork into MSQ gets the
+    // marker as its gate, never the side quest itself.
+    [Fact]
+    public void OccultCrescentMsqGateSitsDeeperThanItsUnlockQuest()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Unlockable && n.Name == "the occult crescent: south horn");
+        Assert.NotNull(entry);
+
+        var duty = store.GetDuty(entry.RowId);
+        Assert.NotNull(duty);
+        Assert.NotNull(duty.MsqGate);
+        Assert.NotEqual(duty.UnlockQuest?.RowId, duty.MsqGate.Quest.RowId);
+        Assert.Equal("7.x", duty.MsqGate.Version);
     }
 
     // Raid coverage: each Alexander floor is gated by its own side quest.

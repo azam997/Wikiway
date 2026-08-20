@@ -114,6 +114,15 @@ public class QueryNormalizerTests
     }
 
     [Fact]
+    public void GatheringCategoryImpliesAcquisition()
+    {
+        var q = normalizer.Normalize("iron ore", SearchCategory.Gathering);
+
+        Assert.Equal(QueryIntent.Acquisition, q.Intent);
+        Assert.Equal(SearchCategory.Gathering, q.Category);
+    }
+
+    [Fact]
     public void NoCategoryLeavesIntentUnknown()
     {
         var q = normalizer.Normalize("momodi", SearchCategory.Other);

@@ -27,6 +27,7 @@ public enum EntityKind
     Achievement,
     Duty,
     Unlockable,
+    Gatherable,
 }
 
 public sealed record NameIndexEntry(EntityKind Kind, uint RowId, string Name);

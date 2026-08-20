@@ -65,8 +65,12 @@ public sealed class LuminaGameDataStore : IGameDataStore
     {
         var names = new List<NameIndexEntry>(80_000);
 
+        // Gatherables carry their own kind so the Gathering lens can scope to
+        // them; the Items lens searches both kinds.
+        var gatherable = GatheringBases();
         foreach (var row in gameData.GetExcelSheet<Item>()!)
-            AddName(names, EntityKind.Item, row.RowId, row.Name.ExtractText());
+            AddName(names, gatherable.ContainsKey(row.RowId) ? EntityKind.Gatherable : EntityKind.Item,
+                row.RowId, row.Name.ExtractText());
 
         foreach (var row in gameData.GetExcelSheet<ENpcResident>()!)
             AddName(names, EntityKind.Npc, row.RowId, row.Singular.ExtractText());
@@ -467,6 +471,20 @@ public sealed class LuminaGameDataStore : IGameDataStore
         return lookup;
     }
 
+    private Dictionary<uint, List<uint>> GatheringBases()
+    {
+        var lookup = gatheringBasesByItem;
+        if (lookup == null)
+        {
+            lock (acquisitionLock)
+            {
+                lookup = gatheringBasesByItem ??= BuildGatheringItemLookup();
+            }
+        }
+
+        return lookup;
+    }
+
     private Dictionary<uint, List<uint>> BuildGatheringItemLookup()
     {
         var itemsByGatheringItem = new Dictionary<uint, uint>();
@@ -655,10 +673,20 @@ public sealed class LuminaGameDataStore : IGameDataStore
         {
             UnlockQuest = unlockEntity != null ? new QuestLink(unlockId, unlockEntity.Name) : null,
             ChainStart = unlockEntity?.UnlockChain.LastOrDefault(s => s.MsqVersion == null)?.Quest,
+            MsqGate = ResolveMsqGate(unlockId, unlockEntity),
             FieldArea = IsFieldArea(duty),
             Optional = unlockEntity is { MainScenario: false },
         };
     }
+
+    // The shallowest chain marker is the most advanced main-scenario
+    // requirement; MSQ linearity makes testing only that one sufficient.
+    private static MsqGate? ResolveMsqGate(uint unlockId, QuestEntity? unlock) =>
+        unlock == null ? null
+        : unlock.MainScenario ? new MsqGate(new QuestLink(unlockId, unlock.Name), unlock.Expansion)
+        : unlock.UnlockChain.FirstOrDefault(s => s.MsqVersion != null) is { } step
+            ? new MsqGate(step.Quest, step.MsqVersion!)
+            : null;
 
     private DutyEntity? GetCuratedZone(uint rowId)
     {
@@ -674,6 +702,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
             {
                 UnlockQuest = new QuestLink(zone.QuestId, unlock.Name),
                 ChainStart = unlock.UnlockChain.LastOrDefault(s => s.MsqVersion == null)?.Quest,
+                MsqGate = ResolveMsqGate(zone.QuestId, unlock),
                 FieldArea = true,
                 Optional = !unlock.MainScenario,
             };

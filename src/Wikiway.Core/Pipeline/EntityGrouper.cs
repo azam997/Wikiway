@@ -10,7 +10,8 @@ public static class EntityGrouper
     // sub-threshold copies' placements are hidden to avoid cutscene spoilers.
     private const int PrimaryHandlerThreshold = 2;
 
-    public static IReadOnlyList<SearchResult> Collapse(IReadOnlyList<SearchResult> results)
+    public static IReadOnlyList<SearchResult> Collapse(
+        IReadOnlyList<SearchResult> results, Func<uint, bool>? sceneQuestVisible = null)
     {
         var groups = new Dictionary<(Type Kind, string Name), Group>();
         var output = new List<SearchResult>(results.Count);
@@ -37,13 +38,13 @@ public static class EntityGrouper
         foreach (var group in groups.Values)
         {
             if (group.Members.Count > 1)
-                output[group.Index] = Merge(group);
+                output[group.Index] = Merge(group, sceneQuestVisible);
         }
 
         return output;
     }
 
-    private static EntityCardResult Merge(Group group)
+    private static EntityCardResult Merge(Group group, Func<uint, bool>? sceneQuestVisible)
     {
         var hasPrimary = group.Members.Any(m =>
             m.Entity is NpcEntity { EventHandlers: >= PrimaryHandlerThreshold });
@@ -67,6 +68,7 @@ public static class EntityGrouper
                 // A lone quest handler is the scene-copy signature; hidden copies
                 // carrying several are interaction variants, not appearances.
                 if (npc.SceneQuests is [var scene] &&
+                    (sceneQuestVisible == null || sceneQuestVisible(scene.Quest.RowId)) &&
                     seenScenes.Add((scene.Quest.RowId,
                         npc.Location?.MapId ?? 0,
                         MathF.Round(npc.Location?.MapX ?? 0, 1),

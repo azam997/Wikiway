@@ -64,6 +64,8 @@ public class QuestChainWalkerTests
         var marker = Assert.Single(steps);
         Assert.Equal("7.x", marker.MsqVersion);
         Assert.Equal(1, marker.Depth);
+        // Progress gating tests markers by row id, so the link must be real.
+        Assert.Equal(2u, marker.Quest.RowId);
         Assert.False(continues);
         Assert.Equal("7.x", msq);
     }

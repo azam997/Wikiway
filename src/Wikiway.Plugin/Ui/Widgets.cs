@@ -104,6 +104,28 @@ internal static class Widgets
         ImGui.Dummy(new Vector2(radius * 2, radius * 2));
     }
 
+    public static void BlurredText(string text)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var size = ImGui.CalcTextSize(text);
+        var pos = ImGui.GetCursorScreenPos();
+        var dl = ImGui.GetWindowDrawList();
+
+        // Smudged draw-list passes plus a veil, reserved with a Dummy: no text
+        // item exists, so hover, tooltip, and copy can never surface the string.
+        var ink = ImGui.GetColorU32(Theme.Neutral300 with { W = 0.16f });
+        for (var i = 0; i < 8; i++)
+        {
+            var angle = MathF.PI * 2f * i / 8f;
+            dl.AddText(pos + (new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * 1.6f * scale), ink, text);
+        }
+
+        dl.AddText(pos + new Vector2(3f * scale, 0), ink, text);
+        dl.AddText(pos - new Vector2(3f * scale, 0), ink, text);
+        dl.AddRectFilled(pos, pos + size, ImGui.GetColorU32(Theme.Bg with { W = 0.35f }));
+        ImGui.Dummy(size);
+    }
+
     public static void TextEllipsized(string text, float maxWidth)
     {
         text = text.Replace('\n', ' ');

@@ -298,14 +298,26 @@ public partial class MainWindow
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
-        RowTitle(quest.Name);
-        RowTag(quest.Genre.Length > 0 ? $"Quest · {quest.Genre}" : "Quest", TagStyle.Accent);
+        var msqHidden = quest.MainScenario && IsMsqTitleHidden(quest.RowId);
+        if (msqHidden)
+        {
+            // The genre name alone dates the quest, so the tag collapses to
+            // the patch while the title is withheld.
+            BlurredRowTitle(quest.Name);
+            RowTag($"Main Scenario ({quest.Expansion})", TagStyle.Accent);
+        }
+        else
+        {
+            RowTitle(quest.Name);
+            RowTag(quest.Genre.Length > 0 ? $"Quest · {quest.Genre}" : "Quest", TagStyle.Accent);
+        }
+
         if (quest.ClassJobLevel > 0)
             RowTag($"Level {quest.ClassJobLevel}", TagStyle.Outline, plugin.Fonts.Small11);
         RowCitation(card.Source.Label);
         RowDetailControls(card);
 
-        if (quest.StartLocation is { } start)
+        if (quest.StartLocation is { } start && !msqHidden)
         {
             fonts.Body13.Push();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
@@ -332,20 +344,36 @@ public partial class MainWindow
         // The expanded card shows the full chain, so the one-line summary
         // only appears while collapsed.
         var chainShown = plugin.Configuration.ShowUnlockRequirements && Active.ExpandedRows.Contains(RowKey(card));
-        if (quest.Prerequisites.Count > 0 && !chainShown)
+        if (quest.Prerequisites.Count > 0 && !chainShown && !msqHidden)
         {
             var joiner = quest.PrerequisiteJoin == QuestJoin.Any ? " or " : ", ";
             fonts.Body13.Push();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
-            ImGui.TextWrapped("Requires: " + string.Join(joiner, quest.Prerequisites.Select(p => p.Name)));
+            ImGui.TextWrapped("Requires: " + string.Join(joiner, quest.Prerequisites.Select(p => PrerequisiteLabel(quest, p))));
             ImGui.PopStyleColor();
             fonts.Body13.Pop();
         }
     }
 
+    // Unreached main-scenario prerequisites show as their patch instead of
+    // their name; the chain markers identify which links those are.
+    private string PrerequisiteLabel(QuestEntity quest, QuestLink prerequisite)
+    {
+        var marker = quest.UnlockChain.FirstOrDefault(s =>
+            s.MsqVersion != null && s.Depth == 1 && s.Quest.RowId == prerequisite.RowId);
+        return marker != null && IsMsqTitleHidden(prerequisite.RowId)
+            ? $"Main Scenario ({marker.MsqVersion})"
+            : prerequisite.Name;
+    }
+
     private void DrawDutyRow(EntityCardResult card, DutyEntity duty)
     {
-        RowTitle(duty.Name);
+        var gated = IsSpoilerGated(card);
+        if (gated)
+            BlurredRowTitle(duty.Name);
+        else
+            RowTitle(duty.Name);
+
         var kind = duty.FieldArea ? "Area" : "Duty";
         RowTag(duty.ContentType.Length > 0 ? $"{kind} · {duty.ContentType}" : kind, TagStyle.Accent);
         if (duty.ClassJobLevel > 0)
@@ -361,6 +389,14 @@ public partial class MainWindow
             RowTag("Solo", TagStyle.Outline, plugin.Fonts.Small11);
         RowCitation(card.Source.Label);
         RowDetailControls(card);
+
+        if (gated)
+        {
+            plugin.Fonts.Citation12.Push();
+            if (Widgets.GhostButton($"Show content from beyond MSQ progress - may contain spoilers##reveal{duty.RowId}"))
+                revealedSpoilers.Add(RowKey(card));
+            plugin.Fonts.Citation12.Pop();
+        }
     }
 
     private void DrawAchievementRow(EntityCardResult card, AchievementEntity achievement)
@@ -541,6 +577,15 @@ public partial class MainWindow
         headerMax = ImGui.GetItemRectMax();
     }
 
+    private void BlurredRowTitle(string title)
+    {
+        plugin.Fonts.Title17.Push();
+        Widgets.BlurredText(title);
+        plugin.Fonts.Title17.Pop();
+        headerMin = ImGui.GetItemRectMin();
+        headerMax = ImGui.GetItemRectMax();
+    }
+
     private void RowTag(string text, TagStyle style, IFontHandle? font = null)
     {
         var handle = font ?? plugin.Fonts.Tag10;
@@ -587,13 +632,30 @@ public partial class MainWindow
     }
 
     private bool HasDetail(EntityCardResult card) =>
-        card.WikiSections.Count > 0
-        || card.Entity is ItemEntity { Acquisition: not null }
-        || ShowNpcTabs(card)
-        || (plugin.Configuration.ShowUnlockRequirements
-            && card.Entity is QuestEntity { UnlockChain.Count: > 0 }
-                or QuestEntity { MsqRequirement: not null }
-                or DutyEntity { UnlockQuest: not null });
+        !IsSpoilerGated(card)
+        && (card.WikiSections.Count > 0
+            || card.Entity is ItemEntity { Acquisition: not null }
+            || ShowNpcTabs(card)
+            || (plugin.Configuration.ShowUnlockRequirements
+                && card.Entity is QuestEntity { UnlockChain.Count: > 0 }
+                    or QuestEntity { MsqRequirement: not null }
+                    or DutyEntity { UnlockQuest: not null }));
+
+    private bool GatingActive =>
+        plugin.Configuration.SpoilerProtectionEnabled && plugin.QuestProgress.IsAvailable;
+
+    private bool IsSpoilerGated(EntityCardResult card) =>
+        GatingActive
+        && card.Entity is DutyEntity { MsqGate: { } gate }
+        && !plugin.QuestProgress.IsComplete(gate.Quest.RowId)
+        && !revealedSpoilers.Contains(RowKey(card));
+
+    // An accepted quest's name is already in the player's journal, so only
+    // unreached main-scenario titles are withheld.
+    private bool IsMsqTitleHidden(uint questRowId) =>
+        GatingActive
+        && !plugin.QuestProgress.IsComplete(questRowId)
+        && !plugin.QuestProgress.IsAccepted(questRowId);
 
     private bool ShowNpcTabs(EntityCardResult card) =>
         plugin.Configuration.ShowCutsceneAppearances
@@ -950,7 +1012,7 @@ public partial class MainWindow
         if (chainQuests == 0)
         {
             foreach (var step in quest.UnlockChain)
-                MsqLine(step.MsqVersion!);
+                MsqLine(step);
             return;
         }
 
@@ -990,6 +1052,7 @@ public partial class MainWindow
                 ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
                 ImGui.TextUnformatted($"Main Scenario ({stepMsq})");
                 ImGui.PopStyleColor();
+                StepCheckmark(step.Quest.RowId);
                 fonts.Body13.Pop();
                 continue;
             }
@@ -1005,6 +1068,7 @@ public partial class MainWindow
                 ImGui.PopStyleColor();
             }
 
+            StepCheckmark(step.Quest.RowId);
             fonts.Body13.Pop();
 
             fonts.Citation12.Push();
@@ -1035,7 +1099,7 @@ public partial class MainWindow
         }
     }
 
-    private void MsqLine(string version)
+    private void MsqLine(QuestChainStep step)
     {
         var fonts = plugin.Fonts;
         fonts.Body13.Push();
@@ -1044,9 +1108,21 @@ public partial class MainWindow
         ImGui.PopStyleColor();
         ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
-        ImGui.TextUnformatted($"Main Scenario ({version})");
+        ImGui.TextUnformatted($"Main Scenario ({step.MsqVersion})");
         ImGui.PopStyleColor();
+        StepCheckmark(step.Quest.RowId);
         fonts.Body13.Pop();
+    }
+
+    private void StepCheckmark(uint questRowId)
+    {
+        if (!GatingActive || !plugin.QuestProgress.IsComplete(questRowId))
+            return;
+
+        ImGui.SameLine(0, Theme.Space2 * ImGuiHelpers.GlobalScale);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+        ImGui.TextUnformatted(FontAwesomeIcon.Check.ToIconString());
+        ImGui.PopStyleColor();
     }
 
     private void DrawDutyUnlock(DutyEntity duty)
@@ -1057,15 +1133,39 @@ public partial class MainWindow
         ImGui.Spacing();
         DetailLabel("UNLOCK REQUIREMENTS");
 
+        // A main-scenario unlock quest's name stays withheld even after the
+        // card itself is revealed - the reveal consents to the duty, not to
+        // printing story titles.
+        var msqUnlock = duty.MsqGate is { } gate
+            && gate.Quest.RowId == duty.UnlockQuest!.RowId
+            && IsMsqTitleHidden(gate.Quest.RowId);
+
         fonts.Body13.Push();
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
         ImGui.TextUnformatted(FontAwesomeIcon.Lock.ToIconString());
         ImGui.PopStyleColor();
         ImGui.SameLine(0, Theme.Space3 * scale);
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
-        ImGui.TextUnformatted($"Unlocked by quest: {duty.UnlockQuest!.Name}");
+        if (msqUnlock)
+        {
+            ImGui.TextUnformatted("Unlocked by quest:");
+            ImGui.SameLine(0, Theme.Space2 * scale);
+            Widgets.BlurredText(duty.UnlockQuest!.Name);
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+            ImGui.TextUnformatted($"Main Scenario ({duty.MsqGate!.Version})");
+            ImGui.PopStyleColor();
+        }
+        else
+        {
+            ImGui.TextUnformatted($"Unlocked by quest: {duty.UnlockQuest!.Name}");
+        }
+
         ImGui.PopStyleColor();
         fonts.Body13.Pop();
+
+        if (msqUnlock)
+            return;
 
         fonts.Citation12.Push();
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);

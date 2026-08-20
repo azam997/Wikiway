@@ -62,6 +62,18 @@ public class ResultRankerTests
     }
 
     [Fact]
+    public void GatheringCategoryPrefersItems()
+    {
+        var local = new ProviderResult("local",
+            [Card(Npc(), 0.8), Card(Item(), 0.8)], ProviderStatus.Ok);
+
+        var merged = ranker.Merge(Query(category: SearchCategory.Gathering), [local]);
+
+        var first = Assert.IsType<EntityCardResult>(merged[0]);
+        Assert.IsType<ItemEntity>(first.Entity);
+    }
+
+    [Fact]
     public void ExplicitCategoryBeatsInferredIntent()
     {
         var local = new ProviderResult("local",

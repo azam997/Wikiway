@@ -25,7 +25,7 @@ public partial class MainWindow : Window, IDisposable
     [
         ("Items", "how do i get an iron ingot...", SearchCategory.Items),
         ("Quests", "the ultimate weapon...", SearchCategory.Quests),
-        ("Duties", "sastasha...", SearchCategory.Duties),
+        ("Gathering", "where can i get iron ore...", SearchCategory.Gathering),
         ("Unlockables", "how do i unlock the gold saucer...", SearchCategory.Unlockables),
         ("NPCs", "where is momodi...", SearchCategory.Npcs),
         ("Other", "what is the aurum vale...", SearchCategory.Other),
@@ -38,6 +38,7 @@ public partial class MainWindow : Window, IDisposable
     private bool focusInput;
     private (string Query, SearchCategory Category)? queuedNavigation;
     private List<ActiveQuestEntry> activeQuests = [];
+    private readonly HashSet<string> revealedSpoilers = [];
 
     private SearchSession Active => sessions[categoryIndex];
 
@@ -54,13 +55,20 @@ public partial class MainWindow : Window, IDisposable
             MinimumSize = new Vector2(460, 240),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
+
+        // Spoiler reveals are consent from this character; the next login may
+        // be an alt whose progress differs.
+        Plugin.ClientState.Logout += OnLogout;
     }
 
     public void Dispose()
     {
+        Plugin.ClientState.Logout -= OnLogout;
         foreach (var session in sessions)
             session.Dispose();
     }
+
+    private void OnLogout(int type, int code) => revealedSpoilers.Clear();
 
     public void SubmitQuery(string query) => SubmitQuery(query, SearchCategory.Other);
 
@@ -112,6 +120,8 @@ public partial class MainWindow : Window, IDisposable
 
     public override void Draw()
     {
+        plugin.QuestProgress.RefreshIfStale();
+
         if (queuedNavigation is { } nav)
         {
             queuedNavigation = null;
@@ -291,7 +301,7 @@ public partial class MainWindow : Window, IDisposable
         ImGuiComponents.HelpMarker(
             "Plain names or questions both work — \"where is momodi\" strips the phrasing, " +
             "and a leading the/a/an is ignored. From chat, /wikiway accepts scoped searches: " +
-            "item:, quest:, duty:, npc:, unlock:.");
+            "item:, quest:, gather:, npc:, unlock:.");
 
         if (submitted)
             RunQuery(session, Categories[categoryIndex].Value);
@@ -420,6 +430,9 @@ public partial class MainWindow : Window, IDisposable
         session.Response = null;
         session.Error = null;
         session.PendingScroll = 0f;
+        // The pipeline runs off-thread, so the progress snapshot it filters
+        // against must be captured here, still on the main thread.
+        plugin.QuestProgress.Refresh();
         session.Pending = Task.Run(() => plugin.Pipeline.ExecuteAsync(query, category, ct), ct);
     }
 }

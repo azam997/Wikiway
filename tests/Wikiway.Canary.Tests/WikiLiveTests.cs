@@ -53,8 +53,8 @@ public class WikiLiveTests : IDisposable
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
     }
 
-    // These two are the drift alarms for the wiki's heading conventions: if item or
-    // duty pages stop using headings our extractor recognizes, they fail loudly.
+    // The drift alarm for the wiki's heading conventions: if item pages stop
+    // using headings our extractor recognizes, this fails loudly.
     [Fact]
     public async Task ItemPageSectionsSatisfyTheExtractor()
     {
@@ -67,15 +67,6 @@ public class WikiLiveTests : IDisposable
             client.GetSectionHtmlAsync("Iron Ingot", int.Parse(picked[0].Index), CancellationToken.None));
         Assert.NotNull(html);
         Assert.True(HtmlText.Strip(html).Length > 0, "section body stripped to nothing");
-    }
-
-    [Fact]
-    public async Task DutyPageSectionsSatisfyTheExtractor()
-    {
-        var sections = await Live(() => client.GetSectionsAsync("The Bowl of Embers", CancellationToken.None));
-
-        var picked = SectionExtractor.SelectSections(SearchCategory.Duties, sections);
-        Assert.NotEmpty(picked);
     }
 
     private static async Task<T> Live<T>(Func<Task<T>> action)

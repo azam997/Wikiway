@@ -149,6 +149,75 @@ public class EntityGrouperTests
     }
 
     [Fact]
+    public void GatedSceneQuestsHideWhenTheirQuestIsIncomplete()
+    {
+        var results = new SearchResult[]
+        {
+            Card(Npc("Momodi", Loc("Ul'dah", 11.7f, 9.7f), 1, handlers: 31), 1.0),
+            Card(Npc("Momodi", Loc("New Gridania", 12.1f, 13.5f, mapId: 11), 2, handlers: 1,
+                sceneQuests: [Scene(66100, "The Magic Number")]), 0.9),
+            Card(Npc("Momodi", Loc("Limsa Lominsa", 10.8f, 12.1f, mapId: 12), 3, handlers: 1,
+                sceneQuests: [Scene(66200, "Call of the Sea")]), 0.9),
+        };
+
+        var card = Assert.IsType<EntityCardResult>(
+            Assert.Single(EntityGrouper.Collapse(results, id => id == 66100)));
+
+        var appearance = Assert.Single(card.CutsceneAppearances);
+        Assert.Equal("The Magic Number", appearance.Quest.Name);
+    }
+
+    [Fact]
+    public void SceneQuestsFailOpenWithoutAVisibilityFilter()
+    {
+        var results = new SearchResult[]
+        {
+            Card(Npc("Momodi", Loc("Ul'dah", 11.7f, 9.7f), 1, handlers: 31), 1.0),
+            Card(Npc("Momodi", Loc("New Gridania", 12.1f, 13.5f, mapId: 11), 2, handlers: 1,
+                sceneQuests: [Scene(66100, "The Magic Number")]), 0.9),
+        };
+
+        var card = Assert.IsType<EntityCardResult>(
+            Assert.Single(EntityGrouper.Collapse(results, sceneQuestVisible: null)));
+
+        Assert.Single(card.CutsceneAppearances);
+    }
+
+    [Fact]
+    public void AllScenesGatedLeavesNoAppearances()
+    {
+        var results = new SearchResult[]
+        {
+            Card(Npc("Momodi", Loc("Ul'dah", 11.7f, 9.7f), 1, handlers: 31), 1.0),
+            Card(Npc("Momodi", Loc("New Gridania", 12.1f, 13.5f, mapId: 11), 2, handlers: 1,
+                sceneQuests: [Scene(66100, "The Magic Number")]), 0.9),
+        };
+
+        var card = Assert.IsType<EntityCardResult>(
+            Assert.Single(EntityGrouper.Collapse(results, _ => false)));
+
+        Assert.Empty(card.CutsceneAppearances);
+    }
+
+    [Fact]
+    public void GatingDoesNotChangeHiddenCounts()
+    {
+        var results = new SearchResult[]
+        {
+            Card(Npc("Momodi", Loc("Ul'dah", 11.7f, 9.7f), 1, handlers: 31), 1.0),
+            Card(Npc("Momodi", Loc("New Gridania", 12.1f, 13.5f, mapId: 11), 2, handlers: 1,
+                sceneQuests: [Scene(66100, "The Magic Number")]), 0.9),
+        };
+
+        var open = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(results)));
+        var gated = Assert.IsType<EntityCardResult>(
+            Assert.Single(EntityGrouper.Collapse(results, _ => false)));
+
+        Assert.Equal(open.MergedHidden, gated.MergedHidden);
+        Assert.Equal(open.MergedCount, gated.MergedCount);
+    }
+
+    [Fact]
     public void SameQuestAtSameSpotDedupes()
     {
         var results = new SearchResult[]

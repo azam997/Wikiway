@@ -36,14 +36,14 @@ internal sealed class SoloDutyNotifier : IDisposable
         var notification = Plugin.NotificationManager.AddNotification(new Notification
         {
             Title = "Wikiway",
-            Content = $"{duty.Name} — click to open the duty guide.",
+            Content = $"{duty.Name} — click to look this duty up.",
             Type = NotificationType.Info,
             InitialDuration = TimeSpan.FromSeconds(10),
         });
 
         notification.Click += args =>
         {
-            mainWindow.SubmitQuery(duty.Name, SearchCategory.Duties);
+            mainWindow.SubmitQuery(duty.Name, SearchCategory.Other);
             mainWindow.IsOpen = true;
             args.Notification.DismissNow();
         };

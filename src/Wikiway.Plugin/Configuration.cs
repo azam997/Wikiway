@@ -15,6 +15,7 @@ public class Configuration : IPluginConfiguration
     public bool ShowUnlockRequirements { get; set; } = true;
     public bool ShowCutsceneAppearances { get; set; } = true;
     public bool ActiveQuestPickerEnabled { get; set; } = true;
+    public bool SpoilerProtectionEnabled { get; set; } = true;
     public bool TutorialSeen { get; set; } = false;
 
     public void Save() => Plugin.PluginInterface.SavePluginConfig(this);

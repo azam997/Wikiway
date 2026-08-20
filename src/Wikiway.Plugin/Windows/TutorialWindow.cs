@@ -10,27 +10,27 @@ public class TutorialWindow : Window
     [
         ("Welcome to Wikiway",
             "Wikiway looks things up for you: local game data first, the wiki second.\n\n" +
-            "Open it any time with /wikiway (or /wway), optionally with a question - " +
+            "Open it any time with /wikiway (or /ww), optionally with a question - " +
             "\"/wikiway where is momodi\".\n\n" +
             "You can scope a command search with a prefix: \"/wikiway quest:the ultimate weapon\" " +
-            "(item:, quest:, duty:, npc:, unlock:)."),
+            "(item:, quest:, gather:, npc:, unlock:)."),
         ("Search categories",
             "The tabs above the search box narrow what a search means, and each tab " +
             "keeps its own search and results.\n\n" +
             "Items - how to obtain an item: marketboard, vendors, drops, crafting.\n" +
             "Quests - unlocks, prerequisites and a quick path to the wiki page.\n" +
-            "Duties - guides pulled straight from the wiki.\n" +
+            "Gathering - gatherable materials: node types, levels and locations.\n" +
             "Unlockables - optional content, from side dungeons, raids and deep dungeons " +
             "to zones like Bozja or the Firmament, and how to unlock it.\n" +
             "NPCs - locations, with a map flag one click away.\n\n" +
-            "Other is a free search across everything."),
+            "Other is a free search across everything, duties included."),
         ("Right-click lookups",
             "Right-click an inventory item, an item link in chat, or an NPC and choose " +
             "\"Look up on Wikiway\" to run the matching search instantly.\n\n" +
             "This can be turned off in settings."),
         ("Flags, toasts and settings",
             "NPC results include a \"Flag map\" button that opens the map at their location.\n\n" +
-            "Entering a solo duty shows a small notification - click it for a guide to that duty.\n\n" +
+            "Entering a solo duty shows a small notification - click it to look the duty up.\n\n" +
             "The scroll button beside Search lists your journal's active quests - pick one to look it up.\n\n" +
             "Settings live in the plugin installer or via the Wikiway window, and the (?) markers " +
             "explain individual options. Enjoy!"),

@@ -33,11 +33,13 @@ public sealed class Plugin : IDalamudPlugin
 
     private const string CommandName = "/wikiway";
     private const string CommandAlias = "/wway";
+    private const string CommandShort = "/ww";
 
     public Configuration Configuration { get; }
     public IQueryPipeline Pipeline { get; }
     public ICacheStore CacheStore { get; }
     internal Fonts Fonts { get; }
+    internal QuestProgressTracker QuestProgress { get; }
     public readonly WindowSystem WindowSystem = new("Wikiway");
 
     private readonly MainWindow mainWindow;
@@ -59,10 +61,15 @@ public sealed class Plugin : IDalamudPlugin
         });
         var wikiClient = new ConsoleGamesWikiClient(httpClient);
         var gameDataStore = new LuminaGameDataStore(DataManager.GameData);
+        QuestProgress = new QuestProgressTracker();
 
         Pipeline = new QueryOrchestrator(
             [
-                new LocalGameDataProvider(gameDataStore),
+                new LocalGameDataProvider(
+                    gameDataStore,
+                    id => !Configuration.SpoilerProtectionEnabled
+                        || !QuestProgress.IsAvailable
+                        || QuestProgress.IsComplete(id)),
                 new ConsoleGamesWikiProvider(
                     wikiClient,
                     () => Configuration.WikiSearchEnabled,
@@ -87,9 +94,13 @@ public sealed class Plugin : IDalamudPlugin
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
             HelpMessage = "Look something up. /wikiway <question or name>, " +
-                "or scope it: /wikiway quest:the ultimate weapon (item:, quest:, duty:, npc:, unlock:)",
+                "or scope it: /wikiway quest:the ultimate weapon (item:, quest:, gather:, npc:, unlock:)",
         });
         CommandManager.AddHandler(CommandAlias, new CommandInfo(OnCommand)
+        {
+            HelpMessage = "Alias for /wikiway.",
+        });
+        CommandManager.AddHandler(CommandShort, new CommandInfo(OnCommand)
         {
             HelpMessage = "Alias for /wikiway.",
         });
@@ -107,6 +118,7 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.RemoveHandler(CommandName);
         CommandManager.RemoveHandler(CommandAlias);
+        CommandManager.RemoveHandler(CommandShort);
 
         WindowSystem.RemoveAllWindows();
         soloDutyNotifier.Dispose();
@@ -141,10 +153,12 @@ public sealed class Plugin : IDalamudPlugin
             {
                 "item" => SearchCategory.Items,
                 "quest" => SearchCategory.Quests,
-                "duty" => SearchCategory.Duties,
+                "gather" or "gathering" => SearchCategory.Gathering,
                 "npc" => SearchCategory.Npcs,
-                // "area" survives as an alias from when the tab was named Areas.
+                // "area" survives as an alias from when the tab was named Areas;
+                // "duty" from when duties had their own tab - Other covers them now.
                 "unlock" or "unlockable" or "area" => SearchCategory.Unlockables,
+                "duty" => SearchCategory.Other,
                 _ => (SearchCategory?)null,
             };
             if (category is { } picked)

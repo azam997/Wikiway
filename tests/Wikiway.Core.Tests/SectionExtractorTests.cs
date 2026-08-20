@@ -56,10 +56,20 @@ public class SectionExtractorTests
     public void CapsAtThreeSections()
     {
         var sections = Enumerable.Range(1, 6)
-            .Select(i => Section(i.ToString(), $"Boss {i}"))
+            .Select(i => Section(i.ToString(), $"Obtained From {i}"))
             .ToArray();
 
-        Assert.Equal(3, SectionExtractor.SelectSections(SearchCategory.Duties, sections).Count);
+        Assert.Equal(3, SectionExtractor.SelectSections(SearchCategory.Items, sections).Count);
+    }
+
+    [Fact]
+    public void GatheringCategorySharesItemKeywords()
+    {
+        var sections = new[] { Section("1", "Gathering"), Section("2", "Dropped By") };
+
+        var picked = SectionExtractor.SelectSections(SearchCategory.Gathering, sections);
+
+        Assert.Equal("Dropped By", Assert.Single(picked).Title);
     }
 
     [Fact]
