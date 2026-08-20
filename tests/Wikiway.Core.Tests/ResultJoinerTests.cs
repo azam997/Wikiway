@@ -68,6 +68,62 @@ public class ResultJoinerTests
     }
 
     [Fact]
+    public void ArticleMismatchedTitlesStillJoin()
+    {
+        var card = Card(Item("Bozjan Southern Front"), 1.0);
+        var sections = Sections("The Bozjan Southern Front", new WikiSectionText("Unlock", "Complete Where Eagles Nest."));
+        var detail = new[] { Detail("local-gamedata", card), Detail("consolegameswiki", sections) };
+
+        var (results, providerDetail) = ResultJoiner.AttachWikiSections([card, sections], detail);
+
+        var joined = Assert.IsType<EntityCardResult>(Assert.Single(results));
+        Assert.Equal("Unlock", Assert.Single(joined.WikiSections).Heading);
+        Assert.Equal(sections.PageUrl, joined.WikiUrl);
+        Assert.Empty(providerDetail.Single(p => p.ProviderId == "consolegameswiki").Results);
+    }
+
+    [Fact]
+    public void ArticleStrippingAppliesToTheCardSideToo()
+    {
+        var card = Card(Npc("The Navel"), 1.0);
+        var sections = Sections("Navel", new WikiSectionText("Guide", "text"));
+
+        var (results, _) = ResultJoiner.AttachWikiSections([card, sections], []);
+
+        var joined = Assert.IsType<EntityCardResult>(Assert.Single(results));
+        Assert.Single(joined.WikiSections);
+    }
+
+    [Fact]
+    public void ExactMatchBeatsStrippedMatch()
+    {
+        var articleCard = Card(Item("The Diadem"), 1.0);
+        var bareCard = Card(Item("Diadem"), 0.9);
+        var sections = Sections("Diadem", new WikiSectionText("Overview", "text"));
+
+        var (results, _) = ResultJoiner.AttachWikiSections([articleCard, bareCard, sections], []);
+
+        Assert.Equal(2, results.Count);
+        Assert.Empty(Assert.IsType<EntityCardResult>(results[0]).WikiSections);
+        Assert.Single(Assert.IsType<EntityCardResult>(results[1]).WikiSections);
+    }
+
+    [Fact]
+    public void AmbiguousStrippedTitlesDoNotJoin()
+    {
+        var results = new SearchResult[]
+        {
+            Card(Item("A Realm Reborn"), 1.0),
+            Card(Item("The Realm Reborn"), 0.9),
+            Sections("Realm Reborn", new WikiSectionText("Overview", "text")),
+        };
+
+        var (joined, _) = ResultJoiner.AttachWikiSections(results, []);
+
+        Assert.Same(results, joined);
+    }
+
+    [Fact]
     public void NoMatchesReturnsTheInputUntouched()
     {
         var results = new SearchResult[] { Card(Npc(), 1.0), WikiResult("Momodi", 0.9) };
