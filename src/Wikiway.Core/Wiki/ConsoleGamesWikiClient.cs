@@ -8,7 +8,7 @@ public sealed class ConsoleGamesWikiClient : IWikiApiClient
     public const string Host = "ffxiv.consolegameswiki.com";
     private const string ApiBase = $"https://{Host}/mediawiki/api.php";
     // Keep the version here in step with <Version> in Wikiway.Plugin.csproj.
-    private const string UserAgent = "Wikiway/0.1 (+https://github.com/azam997/Wikiway)";
+    private const string UserAgent = "Wikiway/1.0 (+https://github.com/azam997/Wikiway)";
 
     private readonly HttpClient http;
 

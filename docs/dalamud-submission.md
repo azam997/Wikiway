@@ -19,7 +19,7 @@ environment with no internet access.
 - `packages.lock.json` committed for every project the plugin build touches
   (`Wikiway.Plugin`, `Wikiway.Core`, `Wikiway.GameData`), so the offline
   builder resolves the same packages we did.
-- Fixed `<Version>` (`0.1.0.0`), not a timestamp or an auto-incrementing build
+- Fixed `<Version>` (`1.0.0.0`), not a timestamp or an auto-incrementing build
   number: the same commit always produces the same version.
 - All windows go through the Dalamud Windowing API (`WindowSystem`).
 - Release build is clean and `latest.zip` contains only plugin assemblies.
