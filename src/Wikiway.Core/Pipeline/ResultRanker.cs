@@ -33,7 +33,7 @@ public sealed class ResultRanker
                 (SearchCategory.Quests, QuestEntity) => 0.5,
                 (SearchCategory.Npcs, NpcEntity) => 0.5,
                 (SearchCategory.Duties, DutyEntity) => 0.5,
-                (SearchCategory.Areas, DutyEntity { FieldArea: true }) => 0.5,
+                (SearchCategory.Unlockables, DutyEntity { Optional: true }) => 0.5,
                 _ => 0,
             };
 

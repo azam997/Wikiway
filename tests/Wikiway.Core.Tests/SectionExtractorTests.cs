@@ -35,6 +35,8 @@ public class SectionExtractorTests
             Section("2", "Purchase"),
             Section("3", "Crafting Recipe"),
             Section("4", "Treasure Hunt"),
+            Section("5", "Exchange"),
+            Section("6", "Gathering"),
         };
 
         var picked = SectionExtractor.SelectSections(SearchCategory.Items, sections);

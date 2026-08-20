@@ -13,7 +13,16 @@ public sealed record ItemEntity(
     : GameEntity(RowId, Name);
 
 public sealed record NpcEntity(uint RowId, string Name, MapLocation? Location, int EventHandlers = 0)
-    : GameEntity(RowId, Name);
+    : GameEntity(RowId, Name)
+{
+    public IReadOnlyList<CutsceneAppearance> SceneQuests { get; init; } = [];
+}
+
+public sealed record CutsceneAppearance(
+    QuestLink Quest,
+    string Expansion,
+    int ExpansionOrder,
+    MapLocation? Location = null);
 
 public sealed record QuestEntity(
     uint RowId,
@@ -70,6 +79,9 @@ public sealed record DutyEntity(
     public QuestLink? UnlockQuest { get; init; }
     public QuestLink? ChainStart { get; init; }
     public bool FieldArea { get; init; }
+
+    // Gated behind a quest outside the main scenario - content you can miss.
+    public bool Optional { get; init; }
 }
 
 public sealed record MapLocation(uint TerritoryTypeId, uint MapId, float MapX, float MapY, string ZoneName);

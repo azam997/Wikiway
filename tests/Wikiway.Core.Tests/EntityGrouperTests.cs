@@ -91,6 +91,81 @@ public class EntityGrouperTests
     }
 
     [Fact]
+    public void HiddenSceneCopiesSurfaceTheirGatingQuests()
+    {
+        var results = new SearchResult[]
+        {
+            Card(Npc("Momodi", Loc("Ul'dah", 11.7f, 9.7f), 1, handlers: 31,
+                sceneQuests: [Scene(66001, "Close to Home"), Scene(66002, "The Ul'dahn Envoy")]), 1.0),
+            Card(Npc("Momodi", Loc("New Gridania", 12.1f, 13.5f, mapId: 11), 2, handlers: 1,
+                sceneQuests: [Scene(66100, "The Magic Number")]), 0.9),
+            Card(Npc("Momodi", Loc("Limsa Lominsa", 10.8f, 12.1f, mapId: 12), 3, handlers: 1,
+                sceneQuests: [Scene(66100, "The Magic Number")]), 0.9),
+        };
+
+        var card = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(results)));
+
+        Assert.Equal(2, card.CutsceneAppearances.Count);
+        Assert.All(card.CutsceneAppearances, a => Assert.Equal("The Magic Number", a.Quest.Name));
+        Assert.Contains(card.CutsceneAppearances, a => a.Location?.ZoneName == "New Gridania");
+        Assert.Contains(card.CutsceneAppearances, a => a.Location?.ZoneName == "Limsa Lominsa");
+    }
+
+    [Fact]
+    public void HiddenCopiesWithSeveralQuestsAreNotAppearances()
+    {
+        var results = new SearchResult[]
+        {
+            Card(Npc("Momodi", Loc("Ul'dah", 11.7f, 9.7f), 1, handlers: 31), 1.0),
+            Card(Npc("Momodi", null, 2, handlers: 4,
+                sceneQuests: [Scene(66001, "Close to Home"), Scene(66002, "Coming to Ul'dah")]), 0.9),
+        };
+
+        var card = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(results)));
+
+        Assert.Equal(1, card.MergedHidden);
+        Assert.Empty(card.CutsceneAppearances);
+    }
+
+    [Fact]
+    public void AppearancesSortByExpansionThenQuestName()
+    {
+        var results = new SearchResult[]
+        {
+            Card(Npc("Aymeric", Loc("Ishgard", 11.7f, 9.7f), 1, handlers: 31), 1.0),
+            Card(Npc("Aymeric", null, 2, handlers: 1,
+                sceneQuests: [Scene(67001, "Litany of Peace", "Heavensward", 1)]), 0.9),
+            Card(Npc("Aymeric", null, 3, handlers: 1,
+                sceneQuests: [Scene(66050, "The Wyrm's Roar", "A Realm Reborn", 0)]), 0.9),
+            Card(Npc("Aymeric", null, 4, handlers: 1,
+                sceneQuests: [Scene(67000, "Divine Intervention", "Heavensward", 1)]), 0.9),
+        };
+
+        var card = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(results)));
+
+        Assert.Equal(
+            ["The Wyrm's Roar", "Divine Intervention", "Litany of Peace"],
+            card.CutsceneAppearances.Select(a => a.Quest.Name).ToList());
+    }
+
+    [Fact]
+    public void SameQuestAtSameSpotDedupes()
+    {
+        var results = new SearchResult[]
+        {
+            Card(Npc("Momodi", Loc("Ul'dah", 11.7f, 9.7f), 1, handlers: 31), 1.0),
+            Card(Npc("Momodi", Loc("New Gridania", 12.68f, 13.51f, mapId: 11), 2, handlers: 1,
+                sceneQuests: [Scene(66100, "The Magic Number")]), 0.9),
+            Card(Npc("Momodi", Loc("New Gridania", 12.71f, 13.48f, mapId: 11), 3, handlers: 1,
+                sceneQuests: [Scene(66100, "The Magic Number")]), 0.9),
+        };
+
+        var card = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(results)));
+
+        Assert.Single(card.CutsceneAppearances);
+    }
+
+    [Fact]
     public void NameGroupingIgnoresCase()
     {
         var results = new SearchResult[]

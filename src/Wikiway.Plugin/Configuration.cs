@@ -13,6 +13,8 @@ public class Configuration : IPluginConfiguration
     public bool ContextMenuEnabled { get; set; } = true;
     public bool SoloDutyToastEnabled { get; set; } = true;
     public bool ShowUnlockRequirements { get; set; } = true;
+    public bool ShowCutsceneAppearances { get; set; } = true;
+    public bool ActiveQuestPickerEnabled { get; set; } = true;
     public bool TutorialSeen { get; set; } = false;
 
     public void Save() => Plugin.PluginInterface.SavePluginConfig(this);

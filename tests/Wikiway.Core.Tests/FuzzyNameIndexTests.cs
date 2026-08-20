@@ -101,10 +101,26 @@ public class FuzzyNameIndexTests
             new NameIndexEntry(EntityKind.Npc, 2, "iron ingot"),
         ]);
 
-        var matches = index.Search("iron ingot", kind: EntityKind.Item);
+        var matches = index.Search("iron ingot", kinds: [EntityKind.Item]);
 
         Assert.Single(matches);
         Assert.Equal(EntityKind.Item, matches[0].Entry.Kind);
+    }
+
+    [Fact]
+    public void MultiKindFilterMatchesAnyListedKind()
+    {
+        var index = new FuzzyNameIndex(
+        [
+            new NameIndexEntry(EntityKind.Duty, 1, "the navel"),
+            new NameIndexEntry(EntityKind.Unlockable, 2, "the navel (extreme)"),
+            new NameIndexEntry(EntityKind.Npc, 3, "the navel keeper"),
+        ]);
+
+        var matches = index.Search("navel", kinds: [EntityKind.Duty, EntityKind.Unlockable]);
+
+        Assert.Equal(2, matches.Count);
+        Assert.DoesNotContain(matches, m => m.Entry.Kind == EntityKind.Npc);
     }
 
     [Fact]

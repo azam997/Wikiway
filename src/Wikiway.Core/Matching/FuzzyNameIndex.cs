@@ -32,7 +32,7 @@ public sealed class FuzzyNameIndex
 
     public int Count => entries.Count;
 
-    public IReadOnlyList<NameMatch> Search(string term, int limit = 8, EntityKind? kind = null)
+    public IReadOnlyList<NameMatch> Search(string term, int limit = 8, IReadOnlyList<EntityKind>? kinds = null)
     {
         if (term.Length == 0)
             return [];
@@ -42,7 +42,7 @@ public sealed class FuzzyNameIndex
 
         foreach (var entry in byName[term])
         {
-            if (kind == null || entry.Kind == kind)
+            if (Matches(kinds, entry.Kind))
                 Add(matches, seen, entry, 1.0);
         }
 
@@ -50,7 +50,7 @@ public sealed class FuzzyNameIndex
         {
             foreach (var (entry, bare) in entries)
             {
-                if (kind != null && entry.Kind != kind)
+                if (!Matches(kinds, entry.Kind))
                     continue;
                 if (IsPrefix(term, entry.Name) || IsPrefix(term, bare))
                     Add(matches, seen, entry, 0.85);
@@ -61,7 +61,7 @@ public sealed class FuzzyNameIndex
         {
             foreach (var (entry, _) in entries)
             {
-                if (kind != null && entry.Kind != kind)
+                if (!Matches(kinds, entry.Kind))
                     continue;
                 if (entry.Name.Length > term.Length && entry.Name.Contains(term, StringComparison.Ordinal))
                     Add(matches, seen, entry, 0.7);
@@ -73,7 +73,7 @@ public sealed class FuzzyNameIndex
         {
             foreach (var (entry, bare) in entries)
             {
-                if (kind != null && entry.Kind != kind)
+                if (!Matches(kinds, entry.Kind))
                     continue;
 
                 var distance = BoundedDistance(term, entry.Name);
@@ -95,6 +95,9 @@ public sealed class FuzzyNameIndex
             .Take(limit)
             .ToList();
     }
+
+    private static bool Matches(IReadOnlyList<EntityKind>? kinds, EntityKind kind) =>
+        kinds == null || kinds.Contains(kind);
 
     private static void Add(List<NameMatch> matches, HashSet<(EntityKind, uint)> seen,
         NameIndexEntry entry, double score)

@@ -22,8 +22,13 @@ internal static class TestData
 
     public static NpcEntity Npc(string name = "Momodi") => new(1, name, null);
 
-    public static NpcEntity Npc(string name, MapLocation? location, uint rowId = 1, int handlers = 0) =>
-        new(rowId, name, location, handlers);
+    public static NpcEntity Npc(string name, MapLocation? location, uint rowId = 1, int handlers = 0,
+        IReadOnlyList<CutsceneAppearance>? sceneQuests = null) =>
+        new(rowId, name, location, handlers) { SceneQuests = sceneQuests ?? [] };
+
+    public static CutsceneAppearance Scene(uint questId, string questName, string expansion = "A Realm Reborn",
+        int order = 0) =>
+        new(new QuestLink(questId, questName), expansion, order);
 
     public static MapLocation Loc(string zone, float x, float y, uint mapId = 10) => new(1, mapId, x, y, zone);
 

@@ -13,6 +13,7 @@ internal sealed class SearchSession : IDisposable
     public readonly List<SearchResult> BelowGate = [];
     public readonly HashSet<string> ExpandedRows = [];
     public readonly HashSet<uint> ExpandedChains = [];
+    public readonly HashSet<string> ExpandedScenes = [];
     public bool LowRelevanceOpen;
     public CancellationTokenSource? Cts;
     public Task<QueryResponse>? Pending;

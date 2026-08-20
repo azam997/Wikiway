@@ -35,7 +35,7 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.True(Count(names, EntityKind.Mount) > 100, "mount names collapsed");
         Assert.True(Count(names, EntityKind.Minion) > 400, "minion names collapsed");
         Assert.True(Count(names, EntityKind.Achievement) > 2_000, "achievement names collapsed");
-        Assert.True(Count(names, EntityKind.Area) > 5, "area names collapsed");
+        Assert.True(Count(names, EntityKind.Unlockable) > 150, "unlockable names collapsed");
     }
 
     [Fact]
@@ -100,6 +100,195 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.All(item.Acquisition.Vendors, v => Assert.Equal(68u, v.GilPrice));
     }
 
+    // Pins the SpecialShop exchange chain: receive-item reverse index ->
+    // 0x1B0000 handler block -> vendor NPC. Iron Ingot has traded 1:1 for a
+    // Steel Amalj'ok at the Amalj'aa beast tribe since 2013.
+    [Fact]
+    public void IronIngotExchangeResolvesFromSpecialShops()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(5057);
+        Assert.NotNull(item?.Acquisition);
+
+        Assert.InRange(item.Acquisition.Exchanges.Count, 1, 10);
+        Assert.All(item.Acquisition.Exchanges, e =>
+        {
+            Assert.False(string.IsNullOrEmpty(e.ShopName));
+            Assert.False(string.IsNullOrEmpty(e.NpcName));
+            Assert.NotEmpty(e.Costs);
+        });
+        Assert.Contains(item.Acquisition.Exchanges,
+            e => e.Costs.Any(c => c.Contains("Steel Amalj'ok", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    // Pins the gathering chain: GatheringItem -> GatheringPointBase ->
+    // GatheringPoint zone + ExportedGatheringPoint coords. Iron Ore mining
+    // nodes have sat in Western Thanalan since 2013.
+    [Fact]
+    public void IronOreGatheringResolvesFromSheets()
+    {
+        var store = fixture.Store();
+
+        var ironOre = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Item && n.Name == "iron ore");
+        Assert.NotNull(ironOre);
+
+        var item = store.GetItem(ironOre.RowId);
+        Assert.NotNull(item?.Acquisition);
+
+        Assert.InRange(item.Acquisition.Gathering.Count, 1, 8);
+        Assert.All(item.Acquisition.Gathering, g =>
+        {
+            Assert.Contains("Mining", g.NodeType, StringComparison.OrdinalIgnoreCase);
+            Assert.InRange(g.Level, 10, 25);
+        });
+        Assert.Contains(item.Acquisition.Gathering, g =>
+            g.Location is { } loc &&
+            loc.ZoneName.Contains("Thanalan", StringComparison.OrdinalIgnoreCase) &&
+            loc.MapX is > 1 and < 45 && loc.MapY is > 1 and < 45);
+    }
+
+    // Pins the curated field-area unlock table: Bozja carries no quest-typed
+    // UnlockCriteria in the sheets, so the table supplies Where Eagles Nest.
+    [Fact]
+    public void BozjanSouthernFrontUnlockResolvesFromCuratedTable()
+    {
+        var store = fixture.Store();
+
+        var area = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Unlockable && n.Name.Contains("bozjan southern front"));
+        Assert.NotNull(area);
+
+        var duty = store.GetDuty(area.RowId);
+        Assert.NotNull(duty);
+        Assert.True(duty.FieldArea);
+        Assert.True(duty.Optional);
+        Assert.NotNull(duty.UnlockQuest);
+        Assert.Equal("Where Eagles Nest", duty.UnlockQuest.Name);
+        Assert.NotNull(duty.ChainStart);
+
+        var quest = store.GetQuest(duty.UnlockQuest.RowId);
+        Assert.NotNull(quest);
+        Assert.InRange(quest.UnlockChain.Count, 1, 30);
+    }
+
+    // Intentionally exact, unlike the banded facts: a new field zone in a
+    // future patch must fail here - either its UnlockCriteria resolves
+    // natively or FieldAreaUnlockQuests needs a probe-verified entry. A zone
+    // that resolves nothing demotes to plain Duty, so kinds are checked too.
+    [Fact]
+    public void EveryFieldAreaResolvesAnUnlockQuest()
+    {
+        var store = fixture.Store();
+
+        var areas = store.GetAllNames()
+            .Where(n => n.Kind is EntityKind.Duty or EntityKind.Unlockable)
+            .Select(n => (Entry: n, Duty: store.GetDuty(n.RowId)))
+            .Where(x => x.Duty is { FieldArea: true })
+            .ToList();
+        Assert.NotEmpty(areas);
+        Assert.All(areas, a =>
+        {
+            Assert.True(a.Duty!.UnlockQuest != null,
+                $"area '{a.Entry.Name}' ({a.Entry.RowId}) resolves no unlock quest");
+            Assert.Equal(EntityKind.Unlockable, a.Entry.Kind);
+        });
+    }
+
+    // Pins the script-arg unlock chain: the Wanderer's Palace carries no
+    // UnlockCriteria; its gate is the side quest naming it in an
+    // INSTANCEDUNGEON arg. Unchanged since 2013.
+    [Fact]
+    public void WanderersPalaceUnlocksViaItsSideQuest()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Unlockable && n.Name == "the wanderer's palace");
+        Assert.NotNull(entry);
+
+        var duty = store.GetDuty(entry.RowId);
+        Assert.NotNull(duty);
+        Assert.True(duty.Optional);
+        Assert.False(duty.FieldArea);
+        Assert.Equal("Method in His Malice", duty.UnlockQuest?.Name);
+    }
+
+    // The complementary pin: an MSQ-gated dungeon stays a plain Duty but
+    // still names its unlock quest.
+    [Fact]
+    public void SastashaStaysADutyDespiteItsMsqUnlock()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Duty && n.Name == "sastasha");
+        Assert.NotNull(entry);
+
+        var duty = store.GetDuty(entry.RowId);
+        Assert.NotNull(duty);
+        Assert.False(duty.Optional);
+        Assert.Equal("It's Probably Pirates", duty.UnlockQuest?.Name);
+    }
+
+    // Raid coverage: each Alexander floor is gated by its own side quest.
+    [Fact]
+    public void AlexanderFistOfTheFatherUnlocksViaDisarmed()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Unlockable && n.Name == "alexander - the fist of the father");
+        Assert.NotNull(entry);
+
+        var duty = store.GetDuty(entry.RowId);
+        Assert.NotNull(duty);
+        Assert.True(duty.Optional);
+        Assert.Equal("Disarmed", duty.UnlockQuest?.Name);
+    }
+
+    // Deep-dungeon coverage: every Palace of the Dead floor set carries a
+    // native quest-typed UnlockCriteria (10 sets as of 7.3).
+    [Fact]
+    public void PalaceOfTheDeadFloorsAreUnlockable()
+    {
+        var store = fixture.Store();
+
+        var floors = store.GetAllNames()
+            .Where(n => n.Name.StartsWith("the palace of the dead"))
+            .ToList();
+        Assert.InRange(floors.Count, 10, 20);
+        Assert.All(floors, f => Assert.Equal(EntityKind.Unlockable, f.Kind));
+    }
+
+    // Pins the curated non-duty zones and their probe-verified gate quests.
+    [Fact]
+    public void CuratedZonesResolveTheirUnlockQuests()
+    {
+        var store = fixture.Store();
+        var names = store.GetAllNames();
+
+        var expected = new (string Zone, string Quest)[]
+        {
+            ("the firmament", "Towards the Firmament"),
+            ("the gold saucer", "It Could Happen to You"),
+            ("island sanctuary", "Seeking Sanctuary"),
+        };
+
+        foreach (var (zone, quest) in expected)
+        {
+            var entry = names.FirstOrDefault(n => n.Kind == EntityKind.Unlockable && n.Name == zone);
+            Assert.True(entry != null, $"curated zone '{zone}' missing from the index");
+
+            var duty = store.GetDuty(entry.RowId);
+            Assert.NotNull(duty);
+            Assert.True(duty.FieldArea);
+            Assert.True(duty.Optional);
+            Assert.Equal(quest, duty.UnlockQuest?.Name);
+        }
+    }
+
     // Pins the scene-spawn filter: Momodi has quest-scene copies in other
     // cities (single-quest event handlers) that must never surface as
     // flaggable locations - only the Quicksand post survives the merge.
@@ -127,6 +316,15 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         var location = Assert.Single(card.MergedLocations);
         Assert.Contains("ul'dah", location.ZoneName, StringComparison.OrdinalIgnoreCase);
         Assert.True(card.MergedHidden > 0, "expected scene copies to be hidden");
+
+        // The hidden single-handler copies now name their gating quests.
+        Assert.NotEmpty(card.CutsceneAppearances);
+        Assert.All(card.CutsceneAppearances, a =>
+        {
+            Assert.False(string.IsNullOrEmpty(a.Quest.Name));
+            Assert.False(string.IsNullOrEmpty(a.Expansion));
+        });
+        Assert.Contains(card.CutsceneAppearances, a => a.Location != null);
     }
 
     [Fact]
@@ -162,7 +360,7 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         var store = fixture.Store();
 
         var entry = store.GetAllNames()
-            .FirstOrDefault(n => n.Kind == EntityKind.Area && n.Name == "the occult crescent: south horn");
+            .FirstOrDefault(n => n.Kind == EntityKind.Unlockable && n.Name == "the occult crescent: south horn");
         Assert.NotNull(entry);
 
         var duty = store.GetDuty(entry.RowId);
@@ -216,19 +414,20 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.Contains(quest.UnlockChain, s => s.Depth > marker.Depth && s.MsqVersion == null);
     }
 
-    // 100 quest-unlocked duties as of 7.3; 0 means the UnlockCriteria read
-    // broke, thousands means the typed-link check went over-broad.
+    // ~360 quest-unlocked duties as of 7.3 (99 via UnlockCriteria, the rest via
+    // INSTANCEDUNGEON script args); 0 means a read broke, thousands means one
+    // of the checks went over-broad.
     [Fact]
     public void DutyUnlockQuestCountLandsInAPlausibleBand()
     {
         var store = fixture.Store();
 
         var unlocked = store.GetAllNames()
-            .Where(n => n.Kind is EntityKind.Duty or EntityKind.Area)
+            .Where(n => n.Kind is EntityKind.Duty or EntityKind.Unlockable)
             .Select(n => store.GetDuty(n.RowId))
             .Count(d => d is { UnlockQuest: not null });
 
-        Assert.InRange(unlocked, 50, 500);
+        Assert.InRange(unlocked, 250, 900);
     }
 
     // "Dawntrail" (the 7.0 finale) is itself MSQ, so the boundary rule
@@ -279,12 +478,13 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.False(string.IsNullOrEmpty(achievement.Description));
     }
 
+    // ~590 as of 7.3 - the optional ~270 live under EntityKind.Unlockable.
     [Fact]
     public void DutyNamesAreIndexed()
     {
         var store = fixture.Store();
 
-        Assert.True(Count(store.GetAllNames(), EntityKind.Duty) > 800, "duty names collapsed");
+        Assert.True(Count(store.GetAllNames(), EntityKind.Duty) > 400, "duty names collapsed");
     }
 
     [Fact]

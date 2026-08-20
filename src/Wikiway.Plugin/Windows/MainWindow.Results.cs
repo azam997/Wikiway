@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Components;
 using Dalamud.Interface.ManagedFontAtlas;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Utility;
@@ -69,6 +70,11 @@ public partial class MainWindow
                 Widgets.Tag($"{provider.ProviderId.Replace('-', ' ')} {provider.Results.Count}", TagStyle.Neutral);
             }
         }
+
+        ImGui.SameLine(0, Theme.Space2 * scale);
+        ImGuiComponents.HelpMarker(
+            "Tags show how many rows each source returned. Results are ranked by confidence; " +
+            "anything under the bar folds into the LOW CONFIDENCE strip at the bottom.");
 
         var label = "RANKED BY SCORE";
         var width = ImGui.CalcTextSize(label).X;
@@ -208,6 +214,19 @@ public partial class MainWindow
             fonts.Small11.Pop();
         }
 
+        // Expanded cards show the same list inside the Locations tab instead,
+        // so the row draws it only while collapsed.
+        if (ShowNpcTabs(card) && Active.ExpandedRows.Contains(RowKey(card)))
+            return;
+
+        DrawNpcLocations(npc.RowId, locations, card.MergedHidden);
+    }
+
+    private void DrawNpcLocations(uint npcRowId, IReadOnlyList<MapLocation> locations, int hidden)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
         var flagWidth = FlagButtonWidth("Flag map");
         for (var i = 0; i < locations.Count; i++)
         {
@@ -228,17 +247,17 @@ public partial class MainWindow
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
             ImGui.SameLine();
             ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
-            if (Widgets.OutlinedButton($"Flag map##flag{npc.RowId}-{i}"))
+            if (Widgets.OutlinedButton($"Flag map##flag{npcRowId}-{i}"))
                 MapLinkOpener.Open(loc);
             ImGui.PopStyleVar();
             fonts.Citation12.Pop();
         }
 
-        if (card.MergedHidden > 0)
+        if (hidden > 0)
         {
             fonts.Citation12.Push();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-            ImGui.TextUnformatted($"{card.MergedHidden} duplicate rows hidden.");
+            ImGui.TextUnformatted($"{hidden} duplicate rows hidden.");
             ImGui.PopStyleColor();
             fonts.Citation12.Pop();
         }
@@ -570,10 +589,15 @@ public partial class MainWindow
     private bool HasDetail(EntityCardResult card) =>
         card.WikiSections.Count > 0
         || card.Entity is ItemEntity { Acquisition: not null }
+        || ShowNpcTabs(card)
         || (plugin.Configuration.ShowUnlockRequirements
             && card.Entity is QuestEntity { UnlockChain.Count: > 0 }
                 or QuestEntity { MsqRequirement: not null }
                 or DutyEntity { UnlockQuest: not null });
+
+    private bool ShowNpcTabs(EntityCardResult card) =>
+        plugin.Configuration.ShowCutsceneAppearances
+        && card is { Entity: NpcEntity, CutsceneAppearances.Count: > 0 };
 
     private static string RowKey(EntityCardResult card) => $"{card.Entity.GetType().Name}:{card.Title}";
 
@@ -593,6 +617,9 @@ public partial class MainWindow
     {
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
+
+        if (card.Entity is NpcEntity npcEntity && ShowNpcTabs(card))
+            DrawNpcTabs(card, npcEntity);
 
         if (card.Entity is ItemEntity { Acquisition: { } acquisition })
         {
@@ -675,6 +702,98 @@ public partial class MainWindow
 
                 fonts.Citation12.Pop();
             }
+
+            var exchangesShown = 0;
+            foreach (var exchange in acquisition.Exchanges)
+            {
+                if (exchangesShown == MaxVendorLines)
+                {
+                    fonts.Citation12.Push();
+                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                    ImGui.TextUnformatted($"+{acquisition.Exchanges.Count - exchangesShown} more exchanges");
+                    ImGui.PopStyleColor();
+                    fonts.Citation12.Pop();
+                    break;
+                }
+
+                exchangesShown++;
+                fonts.Body13.Push();
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+                ImGui.TextUnformatted(FontAwesomeIcon.ExchangeAlt.ToIconString());
+                ImGui.PopStyleColor();
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.TextUnformatted(exchange.NpcName);
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+                ImGui.TextUnformatted($"{exchange.ShopName} — {string.Join(", ", exchange.Costs)}");
+                ImGui.PopStyleColor();
+                if (exchange.Location is { } exchangeLoc)
+                {
+                    ImGui.SameLine(0, Theme.Space3 * scale);
+                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                    ImGui.TextUnformatted($"{exchangeLoc.ZoneName} {exchangeLoc.MapX:0.0}, {exchangeLoc.MapY:0.0}");
+                    ImGui.PopStyleColor();
+                }
+
+                fonts.Body13.Pop();
+
+                if (exchange.Location is { } exchangeFlagLoc)
+                {
+                    fonts.Citation12.Push();
+                    ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+                    ImGui.SameLine();
+                    ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
+                    if (Widgets.OutlinedButton($"Flag map##exch{card.Entity.RowId}-{exchangesShown}"))
+                        MapLinkOpener.Open(exchangeFlagLoc);
+                    ImGui.PopStyleVar();
+                    fonts.Citation12.Pop();
+                }
+            }
+
+            var nodesShown = 0;
+            foreach (var node in acquisition.Gathering)
+            {
+                if (nodesShown == MaxVendorLines)
+                {
+                    fonts.Citation12.Push();
+                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                    ImGui.TextUnformatted($"+{acquisition.Gathering.Count - nodesShown} more nodes");
+                    ImGui.PopStyleColor();
+                    fonts.Citation12.Pop();
+                    break;
+                }
+
+                nodesShown++;
+                fonts.Body13.Push();
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+                ImGui.TextUnformatted(FontAwesomeIcon.Leaf.ToIconString());
+                ImGui.PopStyleColor();
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+                ImGui.TextUnformatted(node.Level > 0 ? $"{node.NodeType} · Level {node.Level}" : node.NodeType);
+                ImGui.PopStyleColor();
+                if (node.Location is { } nodeLoc)
+                {
+                    ImGui.SameLine(0, Theme.Space3 * scale);
+                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                    ImGui.TextUnformatted($"{nodeLoc.ZoneName} {nodeLoc.MapX:0.0}, {nodeLoc.MapY:0.0}");
+                    ImGui.PopStyleColor();
+                }
+
+                fonts.Body13.Pop();
+
+                if (node.Location is { } nodeFlagLoc)
+                {
+                    fonts.Citation12.Push();
+                    ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+                    ImGui.SameLine();
+                    ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
+                    if (Widgets.OutlinedButton($"Flag map##gather{card.Entity.RowId}-{nodesShown}"))
+                        MapLinkOpener.Open(nodeFlagLoc);
+                    ImGui.PopStyleVar();
+                    fonts.Citation12.Pop();
+                }
+            }
         }
 
         if (plugin.Configuration.ShowUnlockRequirements)
@@ -703,6 +822,102 @@ public partial class MainWindow
             }
 
             DrawSectionList(card.Title, card.WikiSections);
+        }
+    }
+
+    private void DrawNpcTabs(EntityCardResult card, NpcEntity npc)
+    {
+        var fonts = plugin.Fonts;
+
+        var locations = card.MergedCount > 1
+            ? card.MergedLocations
+            : npc.Location is { } single ? [single] : (IReadOnlyList<MapLocation>)[];
+
+        ImGui.Spacing();
+        fonts.Body13.Push();
+        ImGui.PushStyleColor(ImGuiCol.Tab, Theme.Surface);
+        ImGui.PushStyleColor(ImGuiCol.TabHovered, Theme.Accent900);
+        ImGui.PushStyleColor(ImGuiCol.TabActive, Theme.Accent800);
+        if (ImGui.BeginTabBar($"##npctabs{npc.RowId}"))
+        {
+            if (ImGui.BeginTabItem($"Locations##npcloc{npc.RowId}"))
+            {
+                DrawNpcLocations(npc.RowId, locations, card.MergedHidden);
+                ImGui.EndTabItem();
+            }
+
+            if (ImGui.BeginTabItem($"Cutscene appearances##npccs{npc.RowId}"))
+            {
+                DrawSceneAppearances(card, npc);
+                ImGui.EndTabItem();
+            }
+
+            ImGui.EndTabBar();
+        }
+
+        ImGui.PopStyleColor(3);
+        fonts.Body13.Pop();
+    }
+
+    private void DrawSceneAppearances(EntityCardResult card, NpcEntity npc)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+        var viewWidth = FlagButtonWidth("View");
+        var flagWidth = FlagButtonWidth("Flag");
+
+        foreach (var group in card.CutsceneAppearances.GroupBy(a => (a.ExpansionOrder, a.Expansion)))
+        {
+            var key = $"{npc.RowId}:{group.Key.ExpansionOrder}";
+            var open = Active.ExpandedScenes.Contains(key);
+            var caret = (open ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight).ToIconString();
+            var count = group.Count();
+            var summary = count == 1 ? "1 appearance" : $"{count} appearances";
+
+            fonts.Body13.Push();
+            if (Widgets.GhostButton($"{caret} {group.Key.Expansion} — {summary}##scenes{key}") &&
+                !Active.ExpandedScenes.Remove(key))
+                Active.ExpandedScenes.Add(key);
+            fonts.Body13.Pop();
+
+            if (!open)
+                continue;
+
+            var i = 0;
+            foreach (var appearance in group)
+            {
+                i++;
+                fonts.Body13.Push();
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+                ImGui.TextUnformatted(appearance.Quest.Name);
+                ImGui.PopStyleColor();
+                if (appearance.Location is { } loc)
+                {
+                    ImGui.SameLine(0, Theme.Space3 * scale);
+                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                    ImGui.TextUnformatted($"{loc.ZoneName} {loc.MapX:0.0}, {loc.MapY:0.0}");
+                    ImGui.PopStyleColor();
+                }
+
+                fonts.Body13.Pop();
+
+                fonts.Citation12.Push();
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+                if (appearance.Location is { } flagLoc)
+                {
+                    ImGui.SameLine();
+                    ImGui.SetCursorPosX(RowRightEdge() - viewWidth - (Theme.Space2 * scale) - flagWidth);
+                    if (Widgets.OutlinedButton($"Flag##sceneflag{npc.RowId}-{group.Key.ExpansionOrder}-{i}"))
+                        MapLinkOpener.Open(flagLoc);
+                }
+
+                ImGui.SameLine();
+                ImGui.SetCursorPosX(RowRightEdge() - viewWidth);
+                if (Widgets.OutlinedButton($"View##scene{npc.RowId}-{group.Key.ExpansionOrder}-{i}"))
+                    queuedNavigation = (appearance.Quest.Name, SearchCategory.Quests);
+                ImGui.PopStyleVar();
+                fonts.Citation12.Pop();
+            }
         }
     }
 

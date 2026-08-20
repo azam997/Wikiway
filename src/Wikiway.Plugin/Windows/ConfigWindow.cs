@@ -70,6 +70,31 @@ public class ConfigWindow : Window
             "Adds an Unlock Requirements section with the prerequisite quest chain; " +
             "each entry jumps to that quest in the Quests tab.");
 
+        var cutscenes = config.ShowCutsceneAppearances;
+        if (ImGui.Checkbox("Show cutscene appearances on NPC cards", ref cutscenes))
+        {
+            config.ShowCutsceneAppearances = cutscenes;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "Adds a tab on expanded NPC cards listing quest scenes the NPC appears in, " +
+            "grouped by expansion. Groups stay collapsed until clicked, so quest names " +
+            "are never shown unprompted.");
+
+        var questPicker = config.ActiveQuestPickerEnabled;
+        if (ImGui.Checkbox("Show an active-quest picker next to search", ref questPicker))
+        {
+            config.ActiveQuestPickerEnabled = questPicker;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "Lists your journal's accepted quests; picking one runs a Quests search for it - " +
+            "the quick path to a quest's unlock chain and wiki page.");
+
         ImGui.Separator();
         if (ImGui.Button("Clear wiki cache"))
             _ = Task.Run(() => plugin.CacheStore.ClearAsync(CancellationToken.None));

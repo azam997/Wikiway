@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using Wikiway.Core.Models;
+using Wikiway.Plugin.GameIntegration;
 using Wikiway.Plugin.Ui;
 
 namespace Wikiway.Plugin.Windows;
@@ -18,14 +20,15 @@ public partial class MainWindow : Window, IDisposable
     private const int StyleColorCount = 21;
     private const int StyleVarCount = 3;
 
-    private static readonly (string Label, SearchCategory Value)[] Categories =
+    // Hint entities are canary-pinned names, so the samples always resolve.
+    private static readonly (string Label, string Hint, SearchCategory Value)[] Categories =
     [
-        ("Items", SearchCategory.Items),
-        ("Quests", SearchCategory.Quests),
-        ("Duties", SearchCategory.Duties),
-        ("Areas", SearchCategory.Areas),
-        ("NPCs", SearchCategory.Npcs),
-        ("Other", SearchCategory.Other),
+        ("Items", "how do i get an iron ingot...", SearchCategory.Items),
+        ("Quests", "the ultimate weapon...", SearchCategory.Quests),
+        ("Duties", "sastasha...", SearchCategory.Duties),
+        ("Unlockables", "how do i unlock the gold saucer...", SearchCategory.Unlockables),
+        ("NPCs", "where is momodi...", SearchCategory.Npcs),
+        ("Other", "what is the aurum vale...", SearchCategory.Other),
     ];
 
     private readonly Plugin plugin;
@@ -34,6 +37,7 @@ public partial class MainWindow : Window, IDisposable
     private int categoryIndex = Categories.Length - 1;
     private bool focusInput;
     private (string Query, SearchCategory Category)? queuedNavigation;
+    private List<ActiveQuestEntry> activeQuests = [];
 
     private SearchSession Active => sessions[categoryIndex];
 
@@ -47,7 +51,7 @@ public partial class MainWindow : Window, IDisposable
 
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(400, 240),
+            MinimumSize = new Vector2(460, 240),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
     }
@@ -223,8 +227,8 @@ public partial class MainWindow : Window, IDisposable
         ImGui.SameLine(0, Theme.Space3 * scale);
         ImGuiComponents.HelpMarker(
             "Narrows the search: Items focuses on acquisition, Quests on unlocks, " +
-            "Duties on guides, Areas on unlocking field zones, NPCs on locations. " +
-            "Other searches everything. Each tab keeps its own search.");
+            "Duties on guides, Unlockables on optional content and how to unlock it, " +
+            "NPCs on locations. Other searches everything. Each tab keeps its own search.");
     }
 
     private void DrawSearchInput()
@@ -236,7 +240,11 @@ public partial class MainWindow : Window, IDisposable
 
         fonts.Body14.Push();
         var searchWidth = ImGui.CalcTextSize("Search").X + (Theme.Space4 * 2f * scale);
+        var questWidth = plugin.Configuration.ActiveQuestPickerEnabled
+            ? ImGui.CalcTextSize(FontAwesomeIcon.Scroll.ToIconString()).X + (Theme.Space4 * 2f * scale) + (Theme.Space2 * scale)
+            : 0f;
         fonts.Body14.Pop();
+        var helpWidth = ImGui.CalcTextSize("(?)").X + (Theme.Space2 * scale);
 
         ImGui.SameLine(0, Theme.Space3 * scale);
         if (focusInput)
@@ -255,9 +263,9 @@ public partial class MainWindow : Window, IDisposable
             new Vector2(glyphSize.X + (Theme.Space3 * 2f * scale), Theme.Space2 * scale));
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
         var inputPos = ImGui.GetCursorScreenPos();
-        ImGui.SetNextItemWidth(-(searchWidth + (Theme.Space3 * scale)));
-        var submitted = ImGui.InputTextWithHint("##wikiway-query", "where is momodi...", ref session.QueryInput, 256,
-            ImGuiInputTextFlags.EnterReturnsTrue);
+        ImGui.SetNextItemWidth(-(searchWidth + questWidth + helpWidth + (Theme.Space3 * scale)));
+        var submitted = ImGui.InputTextWithHint("##wikiway-query", Categories[categoryIndex].Hint,
+            ref session.QueryInput, 256, ImGuiInputTextFlags.EnterReturnsTrue);
         var inputHeight = ImGui.GetItemRectSize().Y;
         ImGui.PopStyleVar(2);
         fonts.Body14.Pop();
@@ -276,8 +284,66 @@ public partial class MainWindow : Window, IDisposable
         ImGui.PopStyleVar();
         fonts.Body14.Pop();
 
+        if (plugin.Configuration.ActiveQuestPickerEnabled)
+            DrawQuestPicker(scale);
+
+        ImGui.SameLine(0, Theme.Space2 * scale);
+        ImGuiComponents.HelpMarker(
+            "Plain names or questions both work — \"where is momodi\" strips the phrasing, " +
+            "and a leading the/a/an is ignored. From chat, /wikiway accepts scoped searches: " +
+            "item:, quest:, duty:, npc:, unlock:.");
+
         if (submitted)
             RunQuery(session, Categories[categoryIndex].Value);
+    }
+
+    private void DrawQuestPicker(float scale)
+    {
+        var fonts = plugin.Fonts;
+
+        fonts.Body14.Push();
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+        ImGui.SameLine(0, Theme.Space2 * scale);
+        if (Widgets.OutlinedButton($"{FontAwesomeIcon.Scroll.ToIconString()}##wikiway-questpick-btn"))
+        {
+            activeQuests = ActiveQuestReader.Read();
+            ImGui.OpenPopup("##wikiway-questpick");
+        }
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Active quests");
+        ImGui.PopStyleVar();
+        fonts.Body14.Pop();
+
+        if (!ImGui.BeginPopup("##wikiway-questpick"))
+            return;
+
+        fonts.Body13.Push();
+        if (activeQuests.Count == 0)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+            ImGui.TextUnformatted("No active quests.");
+            ImGui.PopStyleColor();
+        }
+
+        for (var i = 0; i < activeQuests.Count; i++)
+        {
+            var quest = activeQuests[i];
+            var label = quest.Level > 0 ? $"{quest.Name}   Lv {quest.Level}" : quest.Name;
+            if (quest.Tracked)
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent100);
+            if (ImGui.Selectable($"{label}##questpick{i}"))
+            {
+                queuedNavigation = (quest.Name, SearchCategory.Quests);
+                ImGui.CloseCurrentPopup();
+            }
+
+            if (quest.Tracked)
+                ImGui.PopStyleColor();
+        }
+
+        fonts.Body13.Pop();
+        ImGui.EndPopup();
     }
 
     private void DrawPendingState()

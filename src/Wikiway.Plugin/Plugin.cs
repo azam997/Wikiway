@@ -87,7 +87,7 @@ public sealed class Plugin : IDalamudPlugin
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
             HelpMessage = "Look something up. /wikiway <question or name>, " +
-                "or scope it: /wikiway quest:the ultimate weapon (item:, quest:, duty:, npc:, area:)",
+                "or scope it: /wikiway quest:the ultimate weapon (item:, quest:, duty:, npc:, unlock:)",
         });
         CommandManager.AddHandler(CommandAlias, new CommandInfo(OnCommand)
         {
@@ -143,7 +143,8 @@ public sealed class Plugin : IDalamudPlugin
                 "quest" => SearchCategory.Quests,
                 "duty" => SearchCategory.Duties,
                 "npc" => SearchCategory.Npcs,
-                "area" => SearchCategory.Areas,
+                // "area" survives as an alias from when the tab was named Areas.
+                "unlock" or "unlockable" or "area" => SearchCategory.Unlockables,
                 _ => (SearchCategory?)null,
             };
             if (category is { } picked)

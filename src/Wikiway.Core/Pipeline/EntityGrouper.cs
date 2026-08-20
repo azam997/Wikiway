@@ -51,6 +51,8 @@ public static class EntityGrouper
         var locations = new List<MapLocation>();
         var seen = new HashSet<(uint MapId, float X, float Y)>();
         var hidden = 0;
+        var appearances = new List<CutsceneAppearance>();
+        var seenScenes = new HashSet<(uint QuestId, uint MapId, float X, float Y)>();
 
         foreach (var member in group.Members)
         {
@@ -61,6 +63,18 @@ public static class EntityGrouper
                 (hasPrimary && npc.EventHandlers < PrimaryHandlerThreshold))
             {
                 hidden++;
+
+                // A lone quest handler is the scene-copy signature; hidden copies
+                // carrying several are interaction variants, not appearances.
+                if (npc.SceneQuests is [var scene] &&
+                    seenScenes.Add((scene.Quest.RowId,
+                        npc.Location?.MapId ?? 0,
+                        MathF.Round(npc.Location?.MapX ?? 0, 1),
+                        MathF.Round(npc.Location?.MapY ?? 0, 1))))
+                {
+                    appearances.Add(scene with { Location = npc.Location });
+                }
+
                 continue;
             }
 
@@ -69,11 +83,16 @@ public static class EntityGrouper
                 locations.Add(location);
         }
 
+        appearances.Sort((a, b) => a.ExpansionOrder != b.ExpansionOrder
+            ? a.ExpansionOrder.CompareTo(b.ExpansionOrder)
+            : string.Compare(a.Quest.Name, b.Quest.Name, StringComparison.OrdinalIgnoreCase));
+
         return group.Representative with
         {
             MergedLocations = locations,
             MergedCount = group.Members.Count,
             MergedHidden = hidden,
+            CutsceneAppearances = appearances,
         };
     }
 

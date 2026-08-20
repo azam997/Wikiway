@@ -67,7 +67,7 @@ public sealed class QueryNormalizer
                 SearchCategory.Quests => QueryIntent.Unlock,
                 SearchCategory.Npcs => QueryIntent.Location,
                 SearchCategory.Duties => QueryIntent.General,
-                SearchCategory.Areas => QueryIntent.Unlock,
+                SearchCategory.Unlockables => QueryIntent.Unlock,
                 _ => QueryIntent.Unknown,
             };
         }

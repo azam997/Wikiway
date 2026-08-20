@@ -23,6 +23,9 @@ public sealed record EntityCardResult : SearchResult
 
     public int MergedHidden { get; init; }
 
+    // Set when hidden quest-scene copies contributed their gating quests.
+    public IReadOnlyList<CutsceneAppearance> CutsceneAppearances { get; init; } = [];
+
     // Set when a same-titled wiki sections result was absorbed into this card.
     public IReadOnlyList<WikiSectionText> WikiSections { get; init; } = [];
 

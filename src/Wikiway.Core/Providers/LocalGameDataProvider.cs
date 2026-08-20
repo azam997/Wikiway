@@ -31,7 +31,7 @@ public sealed class LocalGameDataProvider : ISearchProvider
         var index = await indexTask.WaitAsync(ct).ConfigureAwait(false);
 
         var results = new List<SearchResult>();
-        foreach (var match in index.Search(query.Term, kind: KindFilter(query.Category)))
+        foreach (var match in index.Search(query.Term, kinds: KindFilter(query.Category)))
         {
             ct.ThrowIfCancellationRequested();
 
@@ -51,13 +51,15 @@ public sealed class LocalGameDataProvider : ISearchProvider
         return new ProviderResult(Id, EntityGrouper.Collapse(results), ProviderStatus.Ok);
     }
 
-    private static EntityKind? KindFilter(SearchCategory category) => category switch
+    // Duties still cover unlockables - a raid is a duty whether or not a side
+    // quest gates it. Unlockables is the narrower lens.
+    private static EntityKind[]? KindFilter(SearchCategory category) => category switch
     {
-        SearchCategory.Items => EntityKind.Item,
-        SearchCategory.Quests => EntityKind.Quest,
-        SearchCategory.Npcs => EntityKind.Npc,
-        SearchCategory.Duties => EntityKind.Duty,
-        SearchCategory.Areas => EntityKind.Area,
+        SearchCategory.Items => [EntityKind.Item],
+        SearchCategory.Quests => [EntityKind.Quest],
+        SearchCategory.Npcs => [EntityKind.Npc],
+        SearchCategory.Duties => [EntityKind.Duty, EntityKind.Unlockable],
+        SearchCategory.Unlockables => [EntityKind.Unlockable],
         _ => null,
     };
 
@@ -69,7 +71,7 @@ public sealed class LocalGameDataProvider : ISearchProvider
         EntityKind.Mount => store.GetMount(entry.RowId),
         EntityKind.Minion => store.GetMinion(entry.RowId),
         EntityKind.Achievement => store.GetAchievement(entry.RowId),
-        EntityKind.Duty or EntityKind.Area => store.GetDuty(entry.RowId),
+        EntityKind.Duty or EntityKind.Unlockable => store.GetDuty(entry.RowId),
         _ => null,
     };
 }
