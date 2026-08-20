@@ -68,12 +68,21 @@ public sealed class Plugin : IDalamudPlugin
         CacheStore = fileCache;
         httpClient = new HttpClient(new CachingHandler(CacheStore)
         {
-            InnerHandler = new ThrottlingHandler { InnerHandler = new HttpClientHandler() },
+            InnerHandler = new ThrottlingHandler
+            {
+                InnerHandler = new HttpClientHandler
+                {
+                    AutomaticDecompression = System.Net.DecompressionMethods.All,
+                },
+            },
         });
         var wikiClient = new ConsoleGamesWikiClient(httpClient);
         var gameDataStore = new LuminaGameDataStore(DataManager.GameData);
         QuestProgress = new QuestProgressTracker();
 
+        // Spoiler gating fails OPEN while logged out or before the first
+        // progress snapshot - a lookup tool that hides data it can't verify
+        // would be wrong more often than it protects.
         localProvider = new LocalGameDataProvider(
             gameDataStore,
             id => !Configuration.SpoilerProtectionEnabled
@@ -122,19 +131,11 @@ public sealed class Plugin : IDalamudPlugin
         contextMenuIntegration = new ContextMenuIntegration(mainWindow, gameDataStore, Configuration);
         soloDutyNotifier = new SoloDutyNotifier(mainWindow, gameDataStore, Configuration);
 
-        CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "Look something up. /wikiway <question or name>, " +
-                "or scope it: /wikiway quest:the ultimate weapon (item:, quest:, gather:, npc:, unlock:)",
-        });
-        CommandManager.AddHandler(CommandAlias, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "Alias for /wikiway.",
-        });
-        CommandManager.AddHandler(CommandShort, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "Alias for /wikiway.",
-        });
+        AddCommand(CommandName,
+            "Look something up. /wikiway <question or name>, " +
+            "or scope it: /wikiway quest:the ultimate weapon (item:, quest:, gather:, npc:, unlock:)");
+        AddCommand(CommandAlias, "Alias for /wikiway.");
+        AddCommand(CommandShort, "Alias for /wikiway.");
 
         PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
@@ -174,6 +175,14 @@ public sealed class Plugin : IDalamudPlugin
         httpClient.Dispose();
         Fonts.Dispose();
         shutdownCts.Dispose();
+    }
+
+    private void AddCommand(string name, string help)
+    {
+        // AddHandler fails when another plugin already owns the command -
+        // likeliest for the short /ww alias.
+        if (!CommandManager.AddHandler(name, new CommandInfo(OnCommand) { HelpMessage = help }))
+            Log.Warning("Command {Command} is already registered by another plugin.", name);
     }
 
     public void ToggleMainUi() => mainWindow.Toggle();

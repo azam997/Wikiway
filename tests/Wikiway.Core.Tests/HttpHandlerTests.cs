@@ -90,6 +90,29 @@ public class ThrottlingHandlerTests
     }
 
     [Fact]
+    public async Task RetryAfterHeaderStretchesTheBackoff()
+    {
+        var inner = new CountingHandler("ok")
+        {
+            FailuresBeforeSuccess = 1,
+            FailureStatus = HttpStatusCode.TooManyRequests,
+            RetryAfter = TimeSpan.FromMilliseconds(250),
+        };
+        var http = new HttpClient(new ThrottlingHandler(TimeSpan.Zero, TimeSpan.FromMilliseconds(10))
+        {
+            InnerHandler = inner,
+        });
+
+        var watch = Stopwatch.StartNew();
+        var body = await http.GetStringAsync("https://example.com/x");
+        watch.Stop();
+
+        Assert.Equal("ok", body);
+        Assert.Equal(2, inner.Calls);
+        Assert.True(watch.ElapsedMilliseconds >= 200, $"only waited {watch.ElapsedMilliseconds}ms");
+    }
+
+    [Fact]
     public async Task GivesUpAfterThreeAttempts()
     {
         var inner = new CountingHandler("ok") { FailuresBeforeSuccess = 99, FailureStatus = HttpStatusCode.ServiceUnavailable };
@@ -110,12 +133,19 @@ internal sealed class CountingHandler(string body) : HttpMessageHandler
     public int Calls { get; private set; }
     public int FailuresBeforeSuccess { get; init; }
     public HttpStatusCode FailureStatus { get; init; } = HttpStatusCode.InternalServerError;
+    public TimeSpan? RetryAfter { get; init; }
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         Calls++;
-        var status = Calls <= FailuresBeforeSuccess ? FailureStatus : HttpStatusCode.OK;
-        return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) });
+        var failing = Calls <= FailuresBeforeSuccess;
+        var response = new HttpResponseMessage(failing ? FailureStatus : HttpStatusCode.OK)
+        {
+            Content = new StringContent(body),
+        };
+        if (failing && RetryAfter is { } retryAfter)
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(retryAfter);
+        return Task.FromResult(response);
     }
 }
 

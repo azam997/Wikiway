@@ -7,6 +7,9 @@ Type `/wikiway where is momodi` (or just `/wikiway momodi`). Answers come from
 local game data first, and from [ffxiv.consolegameswiki.com](https://ffxiv.consolegameswiki.com/wiki/FF14_Wiki)
 when the game data alone isn't enough. Every result shows where it came from.
 
+Local results follow your client language; the wiki is English, so wiki results
+work best with English terms.
+
 ## What leaves your machine
 
 Local game data answers most questions with no network access at all. When the
