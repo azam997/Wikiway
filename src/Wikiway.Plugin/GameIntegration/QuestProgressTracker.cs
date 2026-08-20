@@ -41,6 +41,13 @@ internal sealed unsafe class QuestProgressTracker
             .Select(q => q.RowId)
             .ToList();
 
+        // IsQuestComplete reads the client's completed-quest bitmap, indexed
+        // by the ushort id the game uses everywhere outside exd; the Quest
+        // sheet keys those rows at 0x10000 + id, hence the subtraction.
+        // questRowIds is pre-filtered to that block, so the cast can't fold a
+        // different event type's row onto a quest id. The static is missing
+        // from the ClientStructs XML docs; verified present and working on
+        // this build by reflection over the shipped assembly and in-game.
         var completed = new HashSet<uint>();
         foreach (var rowId in questRowIds)
         {

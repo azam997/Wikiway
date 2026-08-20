@@ -9,6 +9,11 @@ namespace Wikiway.GameData;
 public sealed class LuminaGameDataStore : IGameDataStore
 {
     private const byte LevelObjectTypeEventNpc = 8;
+
+    // Solo := quest battles or Masked Carnivale. ContentMemberType can't tell:
+    // quest battles carry all-zero role counts and named CFC party sizes are
+    // only ever 0/4/8 (probed against 7.3 sheets; 116 solo rows). The canary
+    // band test trips if a patch introduces a new solo content type.
     private const uint ContentTypeQuestBattles = 7;
     private const uint ContentTypeMaskedCarnivale = 27;
     private const byte ContentLinkTypeInstanceContent = 1;
@@ -710,9 +715,6 @@ public sealed class LuminaGameDataStore : IGameDataStore
             return null;
 
         var duty = row.Value;
-
-        // ContentMemberType is all zeroes for single-player content, so party size
-        // can't identify it; the content type can - quest battles and the Carnivale.
         var solo = duty.ContentType.RowId is ContentTypeQuestBattles or ContentTypeMaskedCarnivale;
 
         var unlockId = ResolveUnlockQuestId(duty);

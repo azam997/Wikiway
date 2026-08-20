@@ -6,7 +6,7 @@ using Wikiway.Core.Wiki;
 
 namespace Wikiway.Core.Providers;
 
-public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriever
+public sealed class ConsoleGamesWikiProvider : ISearchProvider
 {
     public const string ProviderId = "consolegameswiki";
 
@@ -123,14 +123,5 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
 
         var cut = text.LastIndexOf(' ', max);
         return text[..(cut > 0 ? cut : max)] + " …";
-    }
-
-    public async Task<RetrievedDocument?> RetrieveAsync(SearchResult hit, CancellationToken ct)
-    {
-        if (hit is not WikiPageResult page)
-            return null;
-
-        var text = await client.GetPagePlainTextAsync(page.Title, ct).ConfigureAwait(false);
-        return text == null ? null : new RetrievedDocument(page.Title, page.PageUrl, text);
     }
 }

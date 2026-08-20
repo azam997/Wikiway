@@ -122,33 +122,6 @@ public class WikiProviderTests
         Assert.False(provider.IsAvailable);
     }
 
-    [Fact]
-    public async Task RetrieverFetchesPlainTextForWikiHits()
-    {
-        var provider = new ConsoleGamesWikiProvider(new StubWikiClient());
-        var hit = new WikiPageResult
-        {
-            Title = "Aether Currents",
-            Source = new Citation("wiki"),
-            PageUrl = new Uri("https://example.com"),
-        };
-
-        var doc = await provider.RetrieveAsync(hit, CancellationToken.None);
-
-        Assert.NotNull(doc);
-        Assert.Equal("plain text of Aether Currents", doc.PlainText);
-    }
-
-    [Fact]
-    public async Task RetrieverIgnoresNonWikiResults()
-    {
-        var provider = new ConsoleGamesWikiProvider(new StubWikiClient());
-
-        var doc = await provider.RetrieveAsync(TestData.Card(TestData.Npc(), 1.0), CancellationToken.None);
-
-        Assert.Null(doc);
-    }
-
     private sealed class StubWikiClient(params WikiSearchHit[] hits) : IWikiApiClient
     {
         public IReadOnlyList<WikiSection> Sections { get; init; } = [];
@@ -158,9 +131,6 @@ public class WikiProviderTests
 
         public Task<IReadOnlyList<WikiSearchHit>> SearchAsync(string term, int limit, CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<WikiSearchHit>>(hits);
-
-        public Task<string?> GetPagePlainTextAsync(string pageTitle, CancellationToken ct) =>
-            Task.FromResult<string?>($"plain text of {pageTitle}");
 
         public Task<IReadOnlyList<WikiSection>> GetSectionsAsync(string pageTitle, CancellationToken ct) =>
             Task.FromResult(Sections);

@@ -78,19 +78,6 @@ public sealed class ConsoleGamesWikiClient : IWikiApiClient
         return list;
     }
 
-    public async Task<string?> GetPagePlainTextAsync(string pageTitle, CancellationToken ct)
-    {
-        var url = $"{ApiBase}?action=parse&page={Uri.EscapeDataString(pageTitle)}&prop=text&redirects=1&format=json";
-        using var doc = await GetJsonAsync(url, ct).ConfigureAwait(false);
-
-        if (!doc.RootElement.TryGetProperty("parse", out var parse) ||
-            !parse.TryGetProperty("text", out var text))
-            return null;
-
-        var html = text.TryGetProperty("*", out var star) ? star.GetString() : text.GetString();
-        return html == null ? null : HtmlText.Strip(html);
-    }
-
     private async Task<JsonDocument> GetJsonAsync(string url, CancellationToken ct)
     {
         using var response = await http.GetAsync(url, ct).ConfigureAwait(false);

@@ -10,10 +10,8 @@ public class QueryOrchestratorTests
 {
     private static QueryOrchestrator Build(
         IReadOnlyList<ISearchProvider> providers,
-        IDocumentRetriever? retriever = null,
-        IAnswerSynthesizer? synthesizer = null,
         TimeSpan? timeout = null)
-        => new(providers, new QueryNormalizer(), new ResultRanker(), retriever, synthesizer, timeout);
+        => new(providers, new QueryNormalizer(), new ResultRanker(), timeout);
 
     [Fact]
     public async Task MergesResultsFromAllProviders()
@@ -117,30 +115,6 @@ public class QueryOrchestratorTests
         Assert.True(result.Elapsed > TimeSpan.Zero);
     }
 
-    [Fact]
-    public async Task NoSynthesizerMeansNullAnswer()
-    {
-        var orchestrator = Build([new StubProvider("wiki", [WikiResult("Momodi", 0.9)])]);
-
-        var result = await orchestrator.ExecuteAsync("momodi", SearchCategory.Other, CancellationToken.None);
-
-        Assert.Null(result.Answer);
-    }
-
-    [Fact]
-    public async Task ConfiguredSynthesizerGetsRetrievedDocs()
-    {
-        var orchestrator = Build(
-            [new StubProvider("wiki", [WikiResult("Momodi", 0.9)])],
-            new StubRetriever(),
-            new StubSynthesizer());
-
-        var result = await orchestrator.ExecuteAsync("momodi", SearchCategory.Other, CancellationToken.None);
-
-        Assert.NotNull(result.Answer);
-        Assert.Contains("Momodi", result.Answer!.Text);
-    }
-
     private sealed class StubProvider : ISearchProvider
     {
         private readonly Func<CancellationToken, Task<ProviderResult>> impl;
@@ -167,22 +141,5 @@ public class QueryOrchestratorTests
             LastQuery = query;
             return impl(ct);
         }
-    }
-
-    private sealed class StubRetriever : IDocumentRetriever
-    {
-        public Task<RetrievedDocument?> RetrieveAsync(SearchResult hit, CancellationToken ct) =>
-            Task.FromResult<RetrievedDocument?>(
-                new RetrievedDocument(hit.Title, new Uri("https://example.com"), $"Text about {hit.Title}"));
-    }
-
-    private sealed class StubSynthesizer : IAnswerSynthesizer
-    {
-        public bool IsConfigured => true;
-
-        public Task<SynthesizedAnswer?> SynthesizeAsync(
-            NormalizedQuery query, IReadOnlyList<RetrievedDocument> documents, CancellationToken ct) =>
-            Task.FromResult<SynthesizedAnswer?>(
-                new SynthesizedAnswer($"Answer from {documents[0].Title}", []));
     }
 }

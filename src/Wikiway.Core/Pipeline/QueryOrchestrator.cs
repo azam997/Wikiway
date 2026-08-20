@@ -9,23 +9,17 @@ public sealed class QueryOrchestrator : IQueryPipeline
     private readonly IReadOnlyList<ISearchProvider> providers;
     private readonly QueryNormalizer normalizer;
     private readonly ResultRanker ranker;
-    private readonly IDocumentRetriever? retriever;
-    private readonly IAnswerSynthesizer? synthesizer;
     private readonly TimeSpan providerTimeout;
 
     public QueryOrchestrator(
         IReadOnlyList<ISearchProvider> providers,
         QueryNormalizer normalizer,
         ResultRanker ranker,
-        IDocumentRetriever? retriever = null,
-        IAnswerSynthesizer? synthesizer = null,
         TimeSpan? providerTimeout = null)
     {
         this.providers = providers;
         this.normalizer = normalizer;
         this.ranker = ranker;
-        this.retriever = retriever;
-        this.synthesizer = synthesizer;
         this.providerTimeout = providerTimeout ?? TimeSpan.FromSeconds(15);
     }
 
@@ -43,9 +37,8 @@ public sealed class QueryOrchestrator : IQueryPipeline
         var providerResults = await Task.WhenAll(searches).ConfigureAwait(false);
         var merged = ranker.Merge(query, providerResults);
         var (results, detail) = ResultJoiner.AttachWikiSections(merged, providerResults);
-        var answer = await TrySynthesizeAsync(query, results, ct).ConfigureAwait(false);
 
-        return new QueryResponse(query, results, detail, answer, watch.Elapsed);
+        return new QueryResponse(query, results, detail, watch.Elapsed);
     }
 
     private async Task<ProviderResult> RunProviderAsync(
@@ -71,25 +64,5 @@ public sealed class QueryOrchestrator : IQueryPipeline
             // One misbehaving provider shouldn't take the whole query down.
             return ProviderResult.Failure(provider.Id, e.Message);
         }
-    }
-
-    private async Task<SynthesizedAnswer?> TrySynthesizeAsync(
-        NormalizedQuery query, IReadOnlyList<SearchResult> results, CancellationToken ct)
-    {
-        if (synthesizer is not { IsConfigured: true } || retriever is null)
-            return null;
-
-        var documents = new List<RetrievedDocument>();
-        foreach (var hit in results.OfType<WikiPageResult>().Take(3))
-        {
-            var doc = await retriever.RetrieveAsync(hit, ct).ConfigureAwait(false);
-            if (doc != null)
-                documents.Add(doc);
-        }
-
-        if (documents.Count == 0)
-            return null;
-
-        return await synthesizer.SynthesizeAsync(query, documents, ct).ConfigureAwait(false);
     }
 }

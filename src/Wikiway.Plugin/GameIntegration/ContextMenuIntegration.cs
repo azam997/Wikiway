@@ -9,6 +9,9 @@ namespace Wikiway.Plugin.GameIntegration;
 
 internal sealed class ContextMenuIntegration : IDisposable
 {
+    // GameGui.HoveredItem is a raw id with item flags folded in: collectables
+    // are Item row + 500,000, HQ is row + 1,000,000, and ids of 2,000,000 and
+    // up are EventItem (key item) sheet rows the Item sheet can't resolve.
     private const ulong CollectableItemIdOffset = 500_000;
     private const ulong HqItemIdOffset = 1_000_000;
     private const ulong EventItemIdBase = 2_000_000;

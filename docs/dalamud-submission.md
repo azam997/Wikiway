@@ -76,9 +76,10 @@ no automation, takes no actions on the player's behalf, touches no combat data,
 does no damage parsing or logging, collects no account IDs, and talks to no
 game server. Two things to keep true as the plugin grows:
 
-- The unimplemented `IAnswerSynthesizer` seam is where an LLM layer would go.
-  If that ever ships it must be opt-in, use the user's own key, send nothing
-  about the player, and is worth raising in the Dalamud Discord first.
+- No LLM code ships in the plugin. The RAG design in `docs/design.md` is
+  design-only; the experimental seam lives on the `llm-seam` branch. If it is
+  ever pursued it must be opt-in, use the user's own key, send nothing about
+  the player, and be raised in the Dalamud Discord before landing.
 - Any future in-game automation - auto-opening maps, moving the character,
   interacting with NPCs - crosses the automation line. Map links opened from a
   result are user-initiated, which is why they are fine.

@@ -1,6 +1,6 @@
 # FFXIV Wiki Query Plugin — Feasibility & Design
 
-A [Dalamud](https://github.com/goatcorp/Dalamud) plugin (C#/.NET) that answers player questions in-game — NPC locations, quest unlock requirements, job help, item acquisition, mounts/minions/achievements — by querying game wikis and optionally the Lodestone, via either traditional search or an LLM-assisted pipeline.
+A [Dalamud](https://github.com/goatcorp/Dalamud) plugin (C#/.NET) that answers player questions in-game — NPC locations, quest unlock requirements, job help, item acquisition, mounts/minions/achievements — by querying local game data and game wikis, via either traditional search or an LLM-assisted pipeline.
 
 **Verdict: feasible.** The strongest version of this plugin answers most questions *without the web at all* (the game client ships the data), uses one wiki with a verified public API as its web backbone, and treats the LLM as an optional, opt-in layer on top.
 
@@ -13,7 +13,7 @@ A [Dalamud](https://github.com/goatcorp/Dalamud) plugin (C#/.NET) that answers p
 | **Local game data (Lumina)** | ✅ Best option | Dalamud exposes the client's Excel sheets: items, NPCs + map coordinates, quests + prerequisites, shops, recipes, mounts, minions, achievements. Zero network, zero latency, always patch-accurate. Many example questions ("where is NPC X", "how do I get item Y") are answerable entirely offline. |
 | **consolegameswiki** (`ffxiv.consolegameswiki.com`) | ✅ Verified working | MediaWiki 1.44 with a fully public `api.php` (tested live). Full-text search (`list=search`), title autocomplete (`action=opensearch`), page content/sections (`action=parse`), category queries. This is the primary *web* source. |
 | **GamerEscape** (`ffxiv.gamerescape.com`) | ⚠️ Blocked | Returns **HTTP 403 to non-browser clients** — even the main page (tested live). Domain-level bot protection. A custom User-Agent might work but could break at any time and arguably circumvents their access policy. Treat as best-effort secondary at most; recommend omitting from v1. |
-| **Lodestone** (`na.finalfantasyxiv.com/lodestone`) | ⚠️ Scraping only | No API. Server-rendered plain HTML that loads fine for an HTTP client (tested live). Community CSS-selector packs ([lodestone-css-selectors](https://github.com/xivapi/lodestone-css-selectors)) keep parsers maintainable, but scraping is brittle to redesigns and sits in a ToS gray zone. Use only for what local data can't provide; low priority. |
+| **Lodestone** (`na.finalfantasyxiv.com/lodestone`) | ❌ Ruled out | No API — scraping only, which is brittle and sits in a ToS gray zone. Not used and not planned; local data plus the wiki cover the question space. |
 
 Also worth knowing: much of what these wikis contain is itself extracted from game data, so local Lumina lookups and consolegameswiki cover nearly the entire question space between them. Wiki *prose* (strategy tips, unlock walkthroughs) is the part local data can't replace.
 
@@ -88,12 +88,11 @@ The threat model has one central fact: **wiki text is publicly editable and ther
 
 ## 5. Recommendation — hybrid, phased
 
-- **v1:** Local Lumina lookups + consolegameswiki search API. Free, fast, no secrets, ships the majority of the value. Skip GamerEscape (blocked) and Lodestone (redundant with local data).
-- **v2:** Optional "smart answer" mode — RAG over the same retrieval, BYOK, **off by default**, Haiku 4.5 default model, with the injection/spend/privacy mitigations above.
-- **Later, if warranted:** Lodestone scraping for the few things neither local data nor the wiki covers well.
+- **v1 (shipped):** Local Lumina lookups + consolegameswiki search API. Free, fast, no secrets, ships the majority of the value. GamerEscape (blocked) and Lodestone (scraping-only) are ruled out.
+- **v2 (design only — no code ships):** Optional "smart answer" mode — RAG over the same retrieval, BYOK, **off by default**, with the injection/spend/privacy mitigations above. The experimental seam lives on the `llm-seam` branch, not in the shipped plugin, and would be raised with the Dalamud team before ever landing.
 
 ## 6. Standing risks
 
-- **Square Enix ToS** technically prohibits all third-party tools; Dalamud users already accept this, but the plugin should follow Dalamud guidelines (no automation, no market manipulation) to remain listable. Lodestone scraping adds a further ToS gray area.
+- **Square Enix ToS** technically prohibits all third-party tools; Dalamud users already accept this, but the plugin should follow Dalamud guidelines (no automation, no market manipulation) to remain listable.
 - **Wiki licensing:** consolegameswiki content requires attribution — the citation-first UI satisfies this naturally.
-- **Fragility:** wiki templates, Lodestone markup, and bot-protection policies all change without notice; every external source needs a graceful "source unavailable" path.
+- **Fragility:** wiki templates and bot-protection policies change without notice; every external source needs a graceful "source unavailable" path.
