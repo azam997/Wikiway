@@ -1,3 +1,5 @@
+AI written TODO list after a patch.
+
 # After an FFXIV patch or Dalamud update
 
 Run through this when the game patches, when Dalamud bumps its API level, or
