@@ -26,11 +26,10 @@ environment with no internet access.
 
 ## Still to do before opening the PR
 
-- **`icon.png`** - required, 1:1, between 64x64 and 512x512. It goes in the
-  `images/` folder next to the manifest in the DalamudPluginsD17 PR (keep a
-  copy in this repo too). The AI policy asks for hand-made icons and says a
-  crude MS Paint icon is preferred over an AI-generated one, so draw it
-  yourself. Optionally add `image1.png`..`image5.png` screenshots.
+- ~~**`icon.png`**~~ Done: the hand-made 512x512 icon lives at
+  `src/Wikiway.Plugin/images/icon.png` - copy it to
+  `testing/live/Wikiway/images/icon.png` in the DalamudPluginsD17 PR.
+  Optionally add `image1.png`..`image5.png` screenshots.
 - **Soak time.** New plugins go to the testing channel first; the approval
   group tests them by hand. Have the plugin working in-game over a few play
   sessions before submitting.

@@ -2,19 +2,22 @@ using System.Numerics;
 
 namespace Wikiway.Plugin.Ui;
 
-// Nocturne token block with the Flare accent ramp; hex values are authoritative in the design handoffs.
+// Nocturne token block; hex values are authoritative in the design handoffs.
+// Accent ramp is the original purple; Highlight keeps the Flare pink for
+// inline emphasis text only.
 internal static class Theme
 {
     public static readonly Vector4 Bg = FromHex(0x161826);
     public static readonly Vector4 Surface = FromHex(0x232532);
     public static readonly Vector4 Text = FromHex(0xe9e9ed);
-    public static readonly Vector4 Accent = FromHex(0xff6bc4);
-    public static readonly Vector4 Accent100 = FromHex(0xfff1f8);
-    public static readonly Vector4 Accent300 = FromHex(0xffbee0);
-    public static readonly Vector4 Accent400 = FromHex(0xff8acd);
-    public static readonly Vector4 Accent700 = FromHex(0x9b2671);
-    public static readonly Vector4 Accent800 = FromHex(0x6f1b51);
-    public static readonly Vector4 Accent900 = FromHex(0x451933);
+    public static readonly Vector4 Accent = FromHex(0x9184d9);
+    public static readonly Vector4 Accent100 = FromHex(0xf5f4ff);
+    public static readonly Vector4 Accent300 = FromHex(0xd2cefd);
+    public static readonly Vector4 Accent400 = FromHex(0xb5abfc);
+    public static readonly Vector4 Accent700 = FromHex(0x5d5294);
+    public static readonly Vector4 Accent800 = FromHex(0x423a6a);
+    public static readonly Vector4 Accent900 = FromHex(0x2b2741);
+    public static readonly Vector4 Highlight = FromHex(0xff6bc4);
     public static readonly Vector4 Neutral100 = FromHex(0xf3f5fe);
     public static readonly Vector4 Neutral300 = FromHex(0xcfd3e5);
     public static readonly Vector4 Neutral400 = FromHex(0xb2b6ca);
@@ -23,8 +26,10 @@ internal static class Theme
     public static readonly Vector4 Neutral700 = FromHex(0x595d6c);
     public static readonly Vector4 Neutral800 = FromHex(0x3f424d);
     public static readonly Vector4 Divider = FromHex(0xe9e9ed, 0.16f);
-    public static readonly Vector4 AccentHover = FromHex(0xff6bc4, 0.10f);
-    public static readonly Vector4 AccentPressed = FromHex(0xff6bc4, 0.18f);
+    public static readonly Vector4 AccentHover = FromHex(0x9184d9, 0.10f);
+    public static readonly Vector4 AccentPressed = FromHex(0x9184d9, 0.18f);
+    public static readonly Vector4 HighlightHover = FromHex(0xff6bc4, 0.10f);
+    public static readonly Vector4 HighlightPressed = FromHex(0xff6bc4, 0.18f);
 
     public static readonly uint AccentU = Pack(Accent);
     public static readonly uint Accent100U = Pack(Accent100);

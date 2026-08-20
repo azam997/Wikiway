@@ -73,6 +73,16 @@ public class SectionExtractorTests
     }
 
     [Fact]
+    public void UnlocksCategoryUsesUnlockKeywords()
+    {
+        var sections = new[] { Section("1", "Unlocking"), Section("2", "Lore") };
+
+        var picked = SectionExtractor.SelectSections(SearchCategory.Unlocks, sections);
+
+        Assert.Equal("Unlocking", Assert.Single(picked).Title);
+    }
+
+    [Fact]
     public void TranscludedIndicesAreSkipped()
     {
         var sections = new[] { Section("T-1", "Obtained From"), Section("2", "Dropped By") };

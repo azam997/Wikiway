@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Utility;
 
 namespace Wikiway.Plugin.Ui;
@@ -36,6 +37,25 @@ internal static class Widgets
         ImGui.PushStyleColor(ImGuiCol.Border, Theme.Accent);
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
         var clicked = ImGui.Button(label);
+        ImGui.PopStyleVar();
+        ImGui.PopStyleColor(5);
+        return clicked;
+    }
+
+    // Map-flag actions use the Highlight color and carry a flag glyph; measure
+    // widths against FlagLabel so right-alignment stays exact.
+    public static string FlagLabel(string text) =>
+        $"{FontAwesomeIcon.Flag.ToIconString()} {text}";
+
+    public static bool FlagButton(string text, string id)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.HighlightHover);
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, Theme.HighlightPressed);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+        ImGui.PushStyleColor(ImGuiCol.Border, Theme.Highlight);
+        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
+        var clicked = ImGui.Button($"{FlagLabel(text)}##{id}");
         ImGui.PopStyleVar();
         ImGui.PopStyleColor(5);
         return clicked;

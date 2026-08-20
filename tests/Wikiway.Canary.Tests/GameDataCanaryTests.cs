@@ -171,7 +171,7 @@ public class GameDataCanaryTests(GameDataFixture fixture)
 
         var quest = store.GetQuest(duty.UnlockQuest.RowId);
         Assert.NotNull(quest);
-        Assert.InRange(quest.UnlockChain.Count, 1, 30);
+        Assert.InRange(quest.UnlockChains.Sum(c => c.Steps.Count), 1, 30);
     }
 
     // Intentionally exact, unlike the banded facts: a new field zone in a
@@ -425,20 +425,17 @@ public class GameDataCanaryTests(GameDataFixture fixture)
 
         var quest = store.GetQuest(duty.UnlockQuest.RowId);
         Assert.NotNull(quest);
-        Assert.InRange(quest.UnlockChain.Count, 2, 10);
-        Assert.All(quest.UnlockChain, s => Assert.False(string.IsNullOrEmpty(s.Quest.Name)));
-        for (var i = 1; i < quest.UnlockChain.Count; i++)
-            Assert.True(quest.UnlockChain[i].Depth >= quest.UnlockChain[i - 1].Depth, "chain depths regressed");
+        var chain = Assert.Single(quest.UnlockChains);
+        Assert.InRange(chain.Steps.Count, 2, 10);
+        Assert.All(chain.Steps, s => Assert.False(string.IsNullOrEmpty(s.Quest.Name)));
         Assert.Equal("7.x", quest.MsqRequirement);
-        Assert.Equal("7.x", quest.UnlockChain[^1].MsqVersion);
-        Assert.False(quest.ChainContinues);
+        Assert.Equal("7.x", chain.Gate?.Version);
+        Assert.False(chain.Continues);
 
         // Quest.IssuerLocation -> Level -> map coords, and the duty's shortcut
         // to the chain's first pick-up-able quest.
-        var questSteps = quest.UnlockChain.Where(s => s.MsqVersion == null).ToList();
-        Assert.NotEmpty(questSteps);
-        Assert.Equal(questSteps[^1].Quest.Name, duty.ChainStart?.Name);
-        Assert.All(questSteps, s => Assert.NotNull(s.StartLocation));
+        Assert.Equal(chain.Steps[0].Quest.Name, duty.ChainStart?.Name);
+        Assert.All(chain.Steps, s => Assert.NotNull(s.StartLocation));
         Assert.NotNull(quest.StartLocation);
         Assert.InRange(quest.StartLocation.MapX, 1, 45);
         Assert.InRange(quest.StartLocation.MapY, 1, 45);
@@ -446,8 +443,8 @@ public class GameDataCanaryTests(GameDataFixture fixture)
     }
 
     // "The Bozja Incident" forks at "Hail to the Queen": Shadowbringers MSQ
-    // (5.x) AND the Return to Ivalice finale. The marker must sit at that
-    // fork's depth beside its sibling, not trail the whole chain.
+    // (5.x) AND the Return to Ivalice finale. Each branch must be its own
+    // chain in play order, dependency chain listed before its spawner.
     [Fact]
     public void BozjaIncidentForksIntoMsqAndIvalice()
     {
@@ -460,12 +457,18 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         var quest = store.GetQuest(entry.RowId);
         Assert.NotNull(quest);
         Assert.Equal("5.x", quest.MsqRequirement);
+        Assert.Equal(2, quest.UnlockChains.Count);
 
-        var marker = quest.UnlockChain.FirstOrDefault(s => s.MsqVersion == "5.x");
-        Assert.NotNull(marker);
-        Assert.Contains(quest.UnlockChain,
-            s => s.MsqVersion == null && s.Depth == marker.Depth && s.Quest.Name == "The City of Lost Angels");
-        Assert.Contains(quest.UnlockChain, s => s.Depth > marker.Depth && s.MsqVersion == null);
+        var ivalice = quest.UnlockChains[0];
+        Assert.Equal("Return to Ivalice", ivalice.Genre);
+        Assert.InRange(ivalice.Steps.Count, 6, 10);
+        Assert.Equal("The City of Lost Angels", ivalice.Steps[^1].Quest.Name);
+        Assert.Equal("4.x", ivalice.Gate?.Version);
+
+        var trunk = quest.UnlockChains[1];
+        Assert.Equal("Resistance Weapons", trunk.Genre);
+        Assert.Equal(["Hail to the Queen", "Path to the Past"], trunk.Steps.Select(s => s.Quest.Name));
+        Assert.Equal("5.x", trunk.Gate?.Version);
     }
 
     // ~360 quest-unlocked duties as of 7.3 (99 via UnlockCriteria, the rest via
@@ -500,8 +503,12 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         var quest = store.GetQuest(entry.RowId);
         Assert.NotNull(quest);
         Assert.True(quest.MainScenario, "MSQ category detection broke");
-        Assert.NotEmpty(quest.UnlockChain);
-        Assert.All(quest.UnlockChain, s => Assert.Equal("7.x", s.MsqVersion));
+        Assert.NotEmpty(quest.UnlockChains);
+        Assert.All(quest.UnlockChains, c =>
+        {
+            Assert.Empty(c.Steps);
+            Assert.Equal("7.x", c.Gate?.Version);
+        });
         Assert.Equal("7.x", quest.MsqRequirement);
     }
 

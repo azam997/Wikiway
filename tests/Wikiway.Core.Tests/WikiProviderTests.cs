@@ -60,15 +60,34 @@ public class WikiProviderTests
     }
 
     [Fact]
-    public async Task QuestsCategoryBoostsExactTitleToFullScore()
+    public async Task UnlocksCategoryBoostsExactTitleToFullScore()
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
             new WikiSearchHit("The Ultimate Weapon", 1, "")));
 
         var result = await provider.SearchAsync(
-            Query("the ultimate weapon", SearchCategory.Quests), CancellationToken.None);
+            Query("the ultimate weapon", SearchCategory.Unlocks), CancellationToken.None);
 
         Assert.Equal(1.0, result.Results[0].Score);
+    }
+
+    [Fact]
+    public async Task UnlocksCategoryCombinesTitleBoostWithUnlockSections()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
+            new WikiSearchHit("The Gold Saucer", 1, ""))
+        {
+            Sections = [new WikiSection("3", "Unlocking", 1), new WikiSection("7", "Lore", 1)],
+        });
+
+        var result = await provider.SearchAsync(
+            Query("the gold saucer", SearchCategory.Unlocks), CancellationToken.None);
+
+        var sections = Assert.IsType<WikiSectionsResult>(result.Results[0]);
+        var section = Assert.Single(sections.Sections);
+        Assert.Equal("Unlocking", section.Heading);
+        var page = Assert.IsType<WikiPageResult>(result.Results[1]);
+        Assert.Equal(1.0, page.Score);
     }
 
     [Fact]

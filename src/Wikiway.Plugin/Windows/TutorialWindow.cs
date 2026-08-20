@@ -1,5 +1,6 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 
 namespace Wikiway.Plugin.Windows;
@@ -18,10 +19,10 @@ public class TutorialWindow : Window
             "The tabs above the search box narrow what a search means, and each tab " +
             "keeps its own search and results.\n\n" +
             "Items - how to obtain an item: marketboard, vendors, drops, crafting.\n" +
-            "Quests - unlocks, prerequisites and a quick path to the wiki page.\n" +
+            "Quests & Unlocks - quests, their prerequisite chains, and optional content " +
+            "from side dungeons and raids to zones like Bozja or the Firmament, " +
+            "with how to unlock it all.\n" +
             "Gathering - gatherable materials: node types, levels and locations.\n" +
-            "Unlockables - optional content, from side dungeons, raids and deep dungeons " +
-            "to zones like Bozja or the Firmament, and how to unlock it.\n" +
             "NPCs - locations, with a map flag one click away.\n\n" +
             "Other is a free search across everything, duties included."),
         ("Right-click lookups",
@@ -31,7 +32,7 @@ public class TutorialWindow : Window
         ("Flags, toasts and settings",
             "NPC results include a \"Flag map\" button that opens the map at their location.\n\n" +
             "Entering a solo duty shows a small notification - click it to look the duty up.\n\n" +
-            "The scroll button beside Search lists your journal's active quests - pick one to look it up.\n\n" +
+            "The Quests & Unlocks tab lists your journal's active quests - pick one to look it up.\n\n" +
             "Settings live in the plugin installer or via the Wikiway window, and the (?) markers " +
             "explain individual options. Enjoy!"),
     ];
@@ -75,7 +76,7 @@ public class TutorialWindow : Window
         }
 
         var lastPage = page == Pages.Length - 1;
-        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 110);
+        ImGui.SameLine(ImGui.GetContentRegionAvail().X - (110 * ImGuiHelpers.GlobalScale));
         if (page > 0 && ImGui.Button("Back##tutorial"))
             page--;
         if (page > 0)

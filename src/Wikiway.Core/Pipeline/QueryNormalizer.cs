@@ -64,10 +64,9 @@ public sealed class QueryNormalizer
             intent = category switch
             {
                 SearchCategory.Items => QueryIntent.Acquisition,
-                SearchCategory.Quests => QueryIntent.Unlock,
                 SearchCategory.Npcs => QueryIntent.Location,
                 SearchCategory.Gathering => QueryIntent.Acquisition,
-                SearchCategory.Unlockables => QueryIntent.Unlock,
+                SearchCategory.Unlocks => QueryIntent.Unlock,
                 _ => QueryIntent.Unknown,
             };
         }

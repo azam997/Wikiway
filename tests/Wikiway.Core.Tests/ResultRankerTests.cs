@@ -86,6 +86,44 @@ public class ResultRankerTests
     }
 
     [Fact]
+    public void UnlocksCategoryPrefersQuests()
+    {
+        var local = new ProviderResult("local",
+            [Card(Npc(), 0.8), Card(Quest(), 0.8)], ProviderStatus.Ok);
+
+        var merged = ranker.Merge(Query(category: SearchCategory.Unlocks), [local]);
+
+        var first = Assert.IsType<EntityCardResult>(merged[0]);
+        Assert.IsType<QuestEntity>(first.Entity);
+    }
+
+    [Fact]
+    public void UnlocksCategoryPrefersOptionalDuties()
+    {
+        var local = new ProviderResult("local",
+            [Card(Npc(), 0.8), Card(Duty(optional: true), 0.8)], ProviderStatus.Ok);
+
+        var merged = ranker.Merge(Query(category: SearchCategory.Unlocks), [local]);
+
+        var first = Assert.IsType<EntityCardResult>(merged[0]);
+        Assert.IsType<DutyEntity>(first.Entity);
+    }
+
+    // Ties break quest-first in the merged tab: the quest is the actionable
+    // unlock path, and the duty card links to it anyway.
+    [Fact]
+    public void UnlockIntentBreaksTiesQuestFirst()
+    {
+        var local = new ProviderResult("local",
+            [Card(Duty(optional: true), 0.8), Card(Quest(), 0.8)], ProviderStatus.Ok);
+
+        var merged = ranker.Merge(Query(QueryIntent.Unlock, SearchCategory.Unlocks), [local]);
+
+        var first = Assert.IsType<EntityCardResult>(merged[0]);
+        Assert.IsType<QuestEntity>(first.Entity);
+    }
+
+    [Fact]
     public void WikiResultsKeepRelevanceOrder()
     {
         var wiki = new ProviderResult("wiki",

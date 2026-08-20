@@ -34,6 +34,11 @@ internal static class TestData
 
     public static ItemEntity Item(string name = "Iron Ingot") => new(2, name, "Metal", "An ingot of smelted iron.", true);
 
+    public static QuestEntity Quest(string name = "The Ultimate Weapon") => new(3, name, 50, "Main Scenario", []);
+
+    public static DutyEntity Duty(string name = "The Navel", bool optional = false) =>
+        new(4, name, "Trials", 20, 0, false, false, 1) { Optional = optional };
+
     public static WikiSectionsResult Sections(string title, params WikiSectionText[] sections) => new()
     {
         Title = title,

@@ -13,10 +13,9 @@ public enum SearchCategory
 {
     Other,
     Items,
-    Quests,
     Npcs,
-    Unlockables,
     Gathering,
+    Unlocks,
 }
 
 public sealed record NormalizedQuery(

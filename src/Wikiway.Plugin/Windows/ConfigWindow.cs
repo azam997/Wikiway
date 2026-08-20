@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Components;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 
 namespace Wikiway.Plugin.Windows;
@@ -31,7 +32,7 @@ public class ConfigWindow : Window
         }
 
         var maxResults = config.MaxWikiResults;
-        ImGui.SetNextItemWidth(120);
+        ImGui.SetNextItemWidth(120 * ImGuiHelpers.GlobalScale);
         if (ImGui.SliderInt("Max wiki results", ref maxResults, 1, 10))
         {
             config.MaxWikiResults = maxResults;
@@ -46,7 +47,7 @@ public class ConfigWindow : Window
         }
 
         ImGui.SameLine();
-        ImGuiComponents.HelpMarker("Shows on inventory items, chat item links, and NPCs.");
+        ImGuiComponents.HelpMarker("Appears when right-clicking inventory items, chat item links, and NPCs.");
 
         var soloToast = config.SoloDutyToastEnabled;
         if (ImGui.Checkbox("Offer a duty guide when entering a solo duty", ref soloToast))
@@ -67,8 +68,9 @@ public class ConfigWindow : Window
 
         ImGui.SameLine();
         ImGuiComponents.HelpMarker(
-            "Adds an Unlock Requirements section with the prerequisite quest chain; " +
-            "each entry jumps to that quest in the Quests tab.");
+            "Adds an Unlock Requirements section listing each quest chain. " +
+            "Steps link to that quest in the Quests & Unlocks tab, and completed " +
+            "steps get checkmarks while you are logged in.");
 
         var cutscenes = config.ShowCutsceneAppearances;
         if (ImGui.Checkbox("Show cutscene appearances on NPC cards", ref cutscenes))
@@ -79,9 +81,8 @@ public class ConfigWindow : Window
 
         ImGui.SameLine();
         ImGuiComponents.HelpMarker(
-            "Adds a tab on expanded NPC cards listing quest scenes the NPC appears in, " +
-            "grouped by expansion. Groups stay collapsed until clicked, so quest names " +
-            "are never shown unprompted.");
+            "Adds a Cutscene Appearances tab on expanded NPC cards, grouped by expansion, " +
+            "hidden if the user has not progressed past that point in MSQ.");
 
         var spoilers = config.SpoilerProtectionEnabled;
         if (ImGui.Checkbox("Hide spoilers past your MSQ progress", ref spoilers))
@@ -92,13 +93,12 @@ public class ConfigWindow : Window
 
         ImGui.SameLine();
         ImGuiComponents.HelpMarker(
-            "Uses your character's quest progress: cutscene appearances you haven't " +
-            "reached are hidden, duties and Main Scenario quest names beyond your " +
-            "progress are blurred with a click-to-reveal, and unlock chains gain " +
-            "checkmarks on completed steps. No effect while logged out.");
+            "Uses your character's quest progress. Cutscenes you haven't reached are " +
+            "hidden, and duty and Main Scenario names past your progress are blurred " +
+            "until clicked. Does nothing while logged out.");
 
         var questPicker = config.ActiveQuestPickerEnabled;
-        if (ImGui.Checkbox("Show an active-quest picker next to search", ref questPicker))
+        if (ImGui.Checkbox("Show your active quests on the Quests & Unlocks tab", ref questPicker))
         {
             config.ActiveQuestPickerEnabled = questPicker;
             config.Save();
@@ -106,8 +106,8 @@ public class ConfigWindow : Window
 
         ImGui.SameLine();
         ImGuiComponents.HelpMarker(
-            "Lists your journal's accepted quests; picking one runs a Quests search for it - " +
-            "the quick path to a quest's unlock chain and wiki page.");
+            "Lists the quests in your journal on the tab before you search, and behind " +
+            "the Active quests button after. Clicking one looks it up.");
 
         ImGui.Separator();
         if (ImGui.Button("Clear wiki cache"))

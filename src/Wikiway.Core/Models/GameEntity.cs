@@ -36,9 +36,8 @@ public sealed record QuestEntity(
     public string Expansion { get; init; } = "";
     public bool MainScenario { get; init; }
     public MapLocation? StartLocation { get; init; }
-    public IReadOnlyList<QuestChainStep> UnlockChain { get; init; } = [];
+    public IReadOnlyList<QuestChain> UnlockChains { get; init; } = [];
     public string? MsqRequirement { get; init; }
-    public bool ChainContinues { get; init; }
 }
 
 public sealed record QuestLink(uint RowId, string Name);
@@ -50,13 +49,20 @@ public enum QuestJoin
     Any,
 }
 
+// One linear run of quests in play order; a prerequisite fork spawns a
+// separate chain per branch. Gate is the MSQ prerequisite this chain runs
+// into (chains with no steps carry only a gate).
+public sealed record QuestChain(
+    IReadOnlyList<QuestChainStep> Steps,
+    MsqGate? Gate = null,
+    string Genre = "",
+    QuestJoin Join = QuestJoin.All,
+    bool Continues = false);
+
 public sealed record QuestChainStep(
     QuestLink Quest,
-    int Depth,
-    QuestJoin Join,
     ushort Level,
-    MapLocation? StartLocation = null,
-    string? MsqVersion = null);
+    MapLocation? StartLocation = null);
 
 public sealed record MountEntity(uint RowId, string Name, ushort Icon = 0) : GameEntity(RowId, Name);
 

@@ -576,8 +576,8 @@ public sealed class LuminaGameDataStore : IGameDataStore
         if (quest is not { Prerequisites.Count: > 0 })
             return quest;
 
-        var (steps, continues, msqVersion) = QuestChainWalker.Walk(quest, BuildQuest);
-        return quest with { UnlockChain = steps, ChainContinues = continues, MsqRequirement = msqVersion };
+        var (chains, msqVersion) = QuestChainWalker.Walk(quest, BuildQuest);
+        return quest with { UnlockChains = chains, MsqRequirement = msqVersion };
     }
 
     private QuestEntity? BuildQuest(uint rowId)
@@ -672,21 +672,20 @@ public sealed class LuminaGameDataStore : IGameDataStore
             duty.TerritoryType.RowId)
         {
             UnlockQuest = unlockEntity != null ? new QuestLink(unlockId, unlockEntity.Name) : null,
-            ChainStart = unlockEntity?.UnlockChain.LastOrDefault(s => s.MsqVersion == null)?.Quest,
+            ChainStart = unlockEntity?.UnlockChains.FirstOrDefault(c => c.Steps.Count > 0)?.Steps[0].Quest,
             MsqGate = ResolveMsqGate(unlockId, unlockEntity),
             FieldArea = IsFieldArea(duty),
             Optional = unlockEntity is { MainScenario: false },
         };
     }
 
-    // The shallowest chain marker is the most advanced main-scenario
-    // requirement; MSQ linearity makes testing only that one sufficient.
+    // The gate nearest the unlock quest (last in play order) is the most
+    // advanced main-scenario requirement; MSQ linearity makes testing only
+    // that one sufficient.
     private static MsqGate? ResolveMsqGate(uint unlockId, QuestEntity? unlock) =>
         unlock == null ? null
         : unlock.MainScenario ? new MsqGate(new QuestLink(unlockId, unlock.Name), unlock.Expansion)
-        : unlock.UnlockChain.FirstOrDefault(s => s.MsqVersion != null) is { } step
-            ? new MsqGate(step.Quest, step.MsqVersion!)
-            : null;
+        : unlock.UnlockChains.Select(c => c.Gate).LastOrDefault(g => g != null);
 
     private DutyEntity? GetCuratedZone(uint rowId)
     {
@@ -701,7 +700,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
             return new DutyEntity(rowId, zone.Name, zone.Kind, 0, 0, false, false, 0)
             {
                 UnlockQuest = new QuestLink(zone.QuestId, unlock.Name),
-                ChainStart = unlock.UnlockChain.LastOrDefault(s => s.MsqVersion == null)?.Quest,
+                ChainStart = unlock.UnlockChains.FirstOrDefault(c => c.Steps.Count > 0)?.Steps[0].Quest,
                 MsqGate = ResolveMsqGate(zone.QuestId, unlock),
                 FieldArea = true,
                 Optional = !unlock.MainScenario,

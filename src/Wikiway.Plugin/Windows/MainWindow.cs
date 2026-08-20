@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,9 +25,8 @@ public partial class MainWindow : Window, IDisposable
     private static readonly (string Label, string Hint, SearchCategory Value)[] Categories =
     [
         ("Items", "how do i get an iron ingot...", SearchCategory.Items),
-        ("Quests", "the ultimate weapon...", SearchCategory.Quests),
+        ("Quests & Unlocks", "how do i unlock the gold saucer...", SearchCategory.Unlocks),
         ("Gathering", "where can i get iron ore...", SearchCategory.Gathering),
-        ("Unlockables", "how do i unlock the gold saucer...", SearchCategory.Unlockables),
         ("NPCs", "where is momodi...", SearchCategory.Npcs),
         ("Other", "what is the aurum vale...", SearchCategory.Other),
     ];
@@ -38,6 +38,7 @@ public partial class MainWindow : Window, IDisposable
     private bool focusInput;
     private (string Query, SearchCategory Category)? queuedNavigation;
     private List<ActiveQuestEntry> activeQuests = [];
+    private long activeQuestsRefreshAt;
     private readonly HashSet<string> revealedSpoilers = [];
 
     private SearchSession Active => sessions[categoryIndex];
@@ -147,6 +148,11 @@ public partial class MainWindow : Window, IDisposable
 
         HarvestAll();
 
+        // Once a search occupies the tab, the journal list moves behind a
+        // button above the results instead.
+        if (QuestPickerVisible && (Active.Pending != null || Active.Response != null || Active.Error != null))
+            DrawQuestPicker();
+
         if (Active.Pending != null)
             DrawPendingState();
         else if (Active.Error != null)
@@ -158,12 +164,22 @@ public partial class MainWindow : Window, IDisposable
         ImGui.PopID();
     }
 
+    private static readonly string LogoPath = Path.Combine(
+        Plugin.PluginInterface.AssemblyLocation.DirectoryName!, "images", "logo64.png");
+
     private void DrawBrandStrip()
     {
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
         fonts.Brand18.Push();
+        if (Plugin.TextureProvider.GetFromFile(LogoPath).GetWrapOrDefault() is { } logo)
+        {
+            var side = ImGui.GetTextLineHeight();
+            ImGui.Image(logo.Handle, new Vector2(side, side));
+            ImGui.SameLine(0, Theme.Space2 * scale);
+        }
+
         ImGui.TextUnformatted("Wikiway");
         fonts.Brand18.Pop();
         var brandMin = ImGui.GetItemRectMin();
@@ -233,12 +249,6 @@ public partial class MainWindow : Window, IDisposable
         ImGui.PopStyleVar(3);
         fonts.Body13.Pop();
         dl.AddRect(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), Theme.DividerU, Theme.RadiusMd * scale);
-
-        ImGui.SameLine(0, Theme.Space3 * scale);
-        ImGuiComponents.HelpMarker(
-            "Narrows the search: Items focuses on acquisition, Quests on unlocks, " +
-            "Duties on guides, Unlockables on optional content and how to unlock it, " +
-            "NPCs on locations. Other searches everything. Each tab keeps its own search.");
     }
 
     private void DrawSearchInput()
@@ -250,11 +260,12 @@ public partial class MainWindow : Window, IDisposable
 
         fonts.Body14.Push();
         var searchWidth = ImGui.CalcTextSize("Search").X + (Theme.Space4 * 2f * scale);
-        var questWidth = plugin.Configuration.ActiveQuestPickerEnabled
-            ? ImGui.CalcTextSize(FontAwesomeIcon.Scroll.ToIconString()).X + (Theme.Space4 * 2f * scale) + (Theme.Space2 * scale)
-            : 0f;
         fonts.Body14.Pop();
-        var helpWidth = ImGui.CalcTextSize("(?)").X + (Theme.Space2 * scale);
+
+        ImGui.SameLine(0, Theme.Space2 * scale);
+        ImGuiComponents.HelpMarker(
+            "Plain names or questions both work. Ex: \"where is momodi\" or just \"momodi\". " +
+            "Using the tabs provided determines what kind of results you get.");
 
         ImGui.SameLine(0, Theme.Space3 * scale);
         if (focusInput)
@@ -273,7 +284,7 @@ public partial class MainWindow : Window, IDisposable
             new Vector2(glyphSize.X + (Theme.Space3 * 2f * scale), Theme.Space2 * scale));
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
         var inputPos = ImGui.GetCursorScreenPos();
-        ImGui.SetNextItemWidth(-(searchWidth + questWidth + helpWidth + (Theme.Space3 * scale)));
+        ImGui.SetNextItemWidth(-(searchWidth + (Theme.Space3 * scale)));
         var submitted = ImGui.InputTextWithHint("##wikiway-query", Categories[categoryIndex].Hint,
             ref session.QueryInput, 256, ImGuiInputTextFlags.EnterReturnsTrue);
         var inputHeight = ImGui.GetItemRectSize().Y;
@@ -294,36 +305,33 @@ public partial class MainWindow : Window, IDisposable
         ImGui.PopStyleVar();
         fonts.Body14.Pop();
 
-        if (plugin.Configuration.ActiveQuestPickerEnabled)
-            DrawQuestPicker(scale);
-
-        ImGui.SameLine(0, Theme.Space2 * scale);
-        ImGuiComponents.HelpMarker(
-            "Plain names or questions both work — \"where is momodi\" strips the phrasing, " +
-            "and a leading the/a/an is ignored. From chat, /wikiway accepts scoped searches: " +
-            "item:, quest:, gather:, npc:, unlock:.");
-
         if (submitted)
             RunQuery(session, Categories[categoryIndex].Value);
     }
 
-    private void DrawQuestPicker(float scale)
+    // The picker belongs to the quest tab; other tabs keep the plain input.
+    private bool QuestPickerVisible =>
+        plugin.Configuration.ActiveQuestPickerEnabled
+        && Categories[categoryIndex].Value == SearchCategory.Unlocks;
+
+    private void DrawQuestPicker()
     {
+        var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
-        fonts.Body14.Push();
+        fonts.Citation12.Push();
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-        ImGui.SameLine(0, Theme.Space2 * scale);
-        if (Widgets.OutlinedButton($"{FontAwesomeIcon.Scroll.ToIconString()}##wikiway-questpick-btn"))
+        var label = $"{FontAwesomeIcon.Scroll.ToIconString()} Active quests";
+        ImGui.SetCursorPosX(RowRightEdge() - ImGui.CalcTextSize(label).X - (Theme.Space4 * 2f * scale));
+        if (Widgets.OutlinedButton($"{label}##wikiway-questpick-btn"))
         {
             activeQuests = ActiveQuestReader.Read();
             ImGui.OpenPopup("##wikiway-questpick");
         }
 
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Active quests");
         ImGui.PopStyleVar();
-        fonts.Body14.Pop();
+        fonts.Citation12.Pop();
+        ImGui.Spacing();
 
         if (!ImGui.BeginPopup("##wikiway-questpick"))
             return;
@@ -338,22 +346,28 @@ public partial class MainWindow : Window, IDisposable
 
         for (var i = 0; i < activeQuests.Count; i++)
         {
-            var quest = activeQuests[i];
-            var label = quest.Level > 0 ? $"{quest.Name}   Lv {quest.Level}" : quest.Name;
-            if (quest.Tracked)
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent100);
-            if (ImGui.Selectable($"{label}##questpick{i}"))
-            {
-                queuedNavigation = (quest.Name, SearchCategory.Quests);
+            if (QuestSelectable(activeQuests[i], $"##questpick{i}"))
                 ImGui.CloseCurrentPopup();
-            }
-
-            if (quest.Tracked)
-                ImGui.PopStyleColor();
         }
 
         fonts.Body13.Pop();
         ImGui.EndPopup();
+    }
+
+    private bool QuestSelectable(ActiveQuestEntry quest, string id)
+    {
+        var label = quest.Level > 0 ? $"{quest.Name}   Lv {quest.Level}" : quest.Name;
+        if (quest.Tracked)
+            label = $"{FontAwesomeIcon.Star.ToIconString()} {label}";
+        if (quest.Tracked)
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent100);
+        var clicked = ImGui.Selectable(label + id);
+        if (quest.Tracked)
+            ImGui.PopStyleColor();
+
+        if (clicked)
+            queuedNavigation = (quest.Name, SearchCategory.Unlocks);
+        return clicked;
     }
 
     private void DrawPendingState()
@@ -378,11 +392,50 @@ public partial class MainWindow : Window, IDisposable
 
     private void DrawIdleState()
     {
+        if (QuestPickerVisible && RefreshedActiveQuests() is { Count: > 0 } quests)
+        {
+            DrawActiveQuestList(quests);
+            return;
+        }
+
         plugin.Fonts.Body14.Push();
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
         ImGui.TextUnformatted("Type a question or a name and hit enter.");
         ImGui.PopStyleColor();
         plugin.Fonts.Body14.Pop();
+    }
+
+    // The journal changes rarely, so the idle list re-reads it on a slow tick
+    // instead of every frame.
+    private List<ActiveQuestEntry> RefreshedActiveQuests()
+    {
+        if (Environment.TickCount64 >= activeQuestsRefreshAt)
+        {
+            activeQuests = ActiveQuestReader.Read();
+            activeQuestsRefreshAt = Environment.TickCount64 + 2000;
+        }
+
+        return activeQuests;
+    }
+
+    private void DrawActiveQuestList(List<ActiveQuestEntry> quests)
+    {
+        var fonts = plugin.Fonts;
+
+        DetailLabel("ACTIVE QUESTS");
+        ImGui.Spacing();
+
+        fonts.Body13.Push();
+        for (var i = 0; i < quests.Count; i++)
+            QuestSelectable(quests[i], $"##idlequest{i}");
+        fonts.Body13.Pop();
+
+        ImGui.Spacing();
+        fonts.Citation12.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+        ImGui.TextUnformatted("Click a quest to look it up.");
+        ImGui.PopStyleColor();
+        fonts.Citation12.Pop();
     }
 
     // The pipeline runs on the thread pool; the draw loop just polls the
@@ -401,6 +454,7 @@ public partial class MainWindow : Window, IDisposable
                 session.BelowGate.Clear();
                 foreach (var hit in session.Response.Results)
                     (hit.Score < ScoreGate ? session.BelowGate : session.AboveGate).Add(hit);
+                session.HasGameResult = session.AboveGate.Exists(hit => hit is EntityCardResult);
                 session.LowRelevanceOpen = false;
                 session.ExpandedRows.Clear();
                 session.ExpandedChains.Clear();

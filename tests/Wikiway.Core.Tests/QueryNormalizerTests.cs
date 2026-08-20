@@ -123,6 +123,15 @@ public class QueryNormalizerTests
     }
 
     [Fact]
+    public void UnlocksCategoryImpliesUnlock()
+    {
+        var q = normalizer.Normalize("the ultimate weapon", SearchCategory.Unlocks);
+
+        Assert.Equal(QueryIntent.Unlock, q.Intent);
+        Assert.Equal(SearchCategory.Unlocks, q.Category);
+    }
+
+    [Fact]
     public void NoCategoryLeavesIntentUnknown()
     {
         var q = normalizer.Normalize("momodi", SearchCategory.Other);

@@ -52,7 +52,7 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
 
         if (results.Count > 0 && results[0] is WikiPageResult best)
         {
-            if (query.Category == SearchCategory.Quests &&
+            if (query.Category == SearchCategory.Unlocks &&
                 string.Equals(
                     QueryNormalizer.StripLeadingArticle(best.Title),
                     QueryNormalizer.StripLeadingArticle(query.Term),
@@ -62,7 +62,7 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
                 results[0] = best;
             }
 
-            var sections = query.Category is SearchCategory.Items or SearchCategory.Gathering or SearchCategory.Unlockables
+            var sections = query.Category is SearchCategory.Items or SearchCategory.Gathering or SearchCategory.Unlocks
                 ? await TryFetchSectionsAsync(query.Category, best, ct).ConfigureAwait(false)
                 : null;
 

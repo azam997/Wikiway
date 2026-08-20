@@ -59,10 +59,9 @@ public sealed class LocalGameDataProvider : ISearchProvider
     private static EntityKind[]? KindFilter(SearchCategory category) => category switch
     {
         SearchCategory.Items => [EntityKind.Item, EntityKind.Gatherable],
-        SearchCategory.Quests => [EntityKind.Quest],
         SearchCategory.Npcs => [EntityKind.Npc],
         SearchCategory.Gathering => [EntityKind.Gatherable],
-        SearchCategory.Unlockables => [EntityKind.Unlockable],
+        SearchCategory.Unlocks => [EntityKind.Quest, EntityKind.Unlockable],
         _ => null,
     };
 

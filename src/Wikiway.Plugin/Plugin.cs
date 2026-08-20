@@ -152,12 +152,12 @@ public sealed class Plugin : IDalamudPlugin
             var category = query[..colon].ToLowerInvariant() switch
             {
                 "item" => SearchCategory.Items,
-                "quest" => SearchCategory.Quests,
                 "gather" or "gathering" => SearchCategory.Gathering,
                 "npc" => SearchCategory.Npcs,
                 // "area" survives as an alias from when the tab was named Areas;
                 // "duty" from when duties had their own tab - Other covers them now.
-                "unlock" or "unlockable" or "area" => SearchCategory.Unlockables,
+                // "quest" and "unlock" share the merged Quests & Unlocks tab.
+                "quest" or "unlock" or "unlockable" or "area" => SearchCategory.Unlocks,
                 "duty" => SearchCategory.Other,
                 _ => (SearchCategory?)null,
             };

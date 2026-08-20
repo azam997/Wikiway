@@ -14,4 +14,8 @@
     <ProjectReference Include="..\Wikiway.GameData\Wikiway.GameData.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="images\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

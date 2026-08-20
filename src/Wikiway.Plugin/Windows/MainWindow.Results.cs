@@ -4,8 +4,6 @@ using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
-using Dalamud.Interface.Components;
-using Dalamud.Interface.ManagedFontAtlas;
 using Dalamud.Interface.Textures;
 using Dalamud.Interface.Utility;
 using Wikiway.Core.Abstractions;
@@ -67,18 +65,17 @@ public partial class MainWindow
             if (provider.Status == ProviderStatus.Ok && provider.Results.Count > 0)
             {
                 ImGui.SameLine(0, Theme.Space2 * scale);
+                // Provider pills share the 10px tag size; only the strip's
+                // own labels run at 11px.
+                fonts.Tag10.Push();
                 Widgets.Tag($"{provider.ProviderId.Replace('-', ' ')} {provider.Results.Count}", TagStyle.Neutral);
+                fonts.Tag10.Pop();
             }
         }
 
-        ImGui.SameLine(0, Theme.Space2 * scale);
-        ImGuiComponents.HelpMarker(
-            "Tags show how many rows each source returned. Results are ranked by confidence; " +
-            "anything under the bar folds into the LOW CONFIDENCE strip at the bottom.");
-
         var label = "RANKED BY SCORE";
         var width = ImGui.CalcTextSize(label).X;
-        ImGui.SameLine(ImGui.GetWindowContentRegionMax().X - width);
+        ImGui.SameLine(RowRightEdge() - width);
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
         ImGui.TextUnformatted(label);
         ImGui.PopStyleColor();
@@ -227,12 +224,12 @@ public partial class MainWindow
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
-        var flagWidth = FlagButtonWidth("Flag map");
+        var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag map"));
         for (var i = 0; i < locations.Count; i++)
         {
             var loc = locations[i];
             fonts.Body13.Push();
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
             ImGui.TextUnformatted(FontAwesomeIcon.MapPin.ToIconString());
             ImGui.PopStyleColor();
             ImGui.SameLine(0, Theme.Space3 * scale);
@@ -247,7 +244,7 @@ public partial class MainWindow
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
             ImGui.SameLine();
             ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
-            if (Widgets.OutlinedButton($"Flag map##flag{npcRowId}-{i}"))
+            if (Widgets.FlagButton("Flag map", $"flag{npcRowId}-{i}"))
                 MapLinkOpener.Open(loc);
             ImGui.PopStyleVar();
             fonts.Citation12.Pop();
@@ -313,14 +310,14 @@ public partial class MainWindow
         }
 
         if (quest.ClassJobLevel > 0)
-            RowTag($"Level {quest.ClassJobLevel}", TagStyle.Outline, plugin.Fonts.Small11);
+            RowTag($"Level {quest.ClassJobLevel}", TagStyle.Outline);
         RowCitation(card.Source.Label);
         RowDetailControls(card);
 
         if (quest.StartLocation is { } start && !msqHidden)
         {
             fonts.Body13.Push();
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
             ImGui.TextUnformatted(FontAwesomeIcon.MapPin.ToIconString());
             ImGui.PopStyleColor();
             ImGui.SameLine(0, Theme.Space3 * scale);
@@ -334,8 +331,8 @@ public partial class MainWindow
             fonts.Citation12.Push();
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
             ImGui.SameLine();
-            ImGui.SetCursorPosX(RowRightEdge() - FlagButtonWidth("Flag map"));
-            if (Widgets.OutlinedButton($"Flag map##queststart{quest.RowId}"))
+            ImGui.SetCursorPosX(RowRightEdge() - FlagButtonWidth(Widgets.FlagLabel("Flag map")));
+            if (Widgets.FlagButton("Flag map", $"queststart{quest.RowId}"))
                 MapLinkOpener.Open(start);
             ImGui.PopStyleVar();
             fonts.Citation12.Pop();
@@ -356,13 +353,14 @@ public partial class MainWindow
     }
 
     // Unreached main-scenario prerequisites show as their patch instead of
-    // their name; the chain markers identify which links those are.
+    // their name; the chain gates identify which links those are.
     private string PrerequisiteLabel(QuestEntity quest, QuestLink prerequisite)
     {
-        var marker = quest.UnlockChain.FirstOrDefault(s =>
-            s.MsqVersion != null && s.Depth == 1 && s.Quest.RowId == prerequisite.RowId);
-        return marker != null && IsMsqTitleHidden(prerequisite.RowId)
-            ? $"Main Scenario ({marker.MsqVersion})"
+        var gate = quest.UnlockChains
+            .Select(c => c.Gate)
+            .FirstOrDefault(g => g?.Quest.RowId == prerequisite.RowId);
+        return gate != null && IsMsqTitleHidden(prerequisite.RowId)
+            ? $"Main Scenario ({gate.Version})"
             : prerequisite.Name;
     }
 
@@ -380,13 +378,13 @@ public partial class MainWindow
         {
             RowTag(duty.ItemLevel > 0
                 ? $"Level {duty.ClassJobLevel} · ilvl {duty.ItemLevel}"
-                : $"Level {duty.ClassJobLevel}", TagStyle.Outline, plugin.Fonts.Small11);
+                : $"Level {duty.ClassJobLevel}", TagStyle.Outline);
         }
 
         if (duty.HighEnd)
-            RowTag("High-end", TagStyle.Accent, plugin.Fonts.Small11);
+            RowTag("High-end", TagStyle.Accent);
         if (duty.Solo)
-            RowTag("Solo", TagStyle.Outline, plugin.Fonts.Small11);
+            RowTag("Solo", TagStyle.Outline);
         RowCitation(card.Source.Label);
         RowDetailControls(card);
 
@@ -471,7 +469,9 @@ public partial class MainWindow
         for (var i = 0; i < sections.Count; i++)
         {
             var section = sections[i];
-            var flags = i == 0 ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
+            // A game-data card already answers the query, so wiki sections
+            // stay folded behind their headings when one is present.
+            var flags = i == 0 && !Active.HasGameResult ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
 
             fonts.Body13.Push();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
@@ -586,9 +586,9 @@ public partial class MainWindow
         headerMax = ImGui.GetItemRectMax();
     }
 
-    private void RowTag(string text, TagStyle style, IFontHandle? font = null)
+    private void RowTag(string text, TagStyle style)
     {
-        var handle = font ?? plugin.Fonts.Tag10;
+        var handle = plugin.Fonts.Tag10;
         ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
         handle.Push();
         var pillHeight = ImGui.GetTextLineHeight() + (4f * ImGuiHelpers.GlobalScale);
@@ -637,7 +637,7 @@ public partial class MainWindow
             || card.Entity is ItemEntity { Acquisition: not null }
             || ShowNpcTabs(card)
             || (plugin.Configuration.ShowUnlockRequirements
-                && card.Entity is QuestEntity { UnlockChain.Count: > 0 }
+                && card.Entity is QuestEntity { UnlockChains.Count: > 0 }
                     or QuestEntity { MsqRequirement: not null }
                     or DutyEntity { UnlockQuest: not null }));
 
@@ -691,7 +691,7 @@ public partial class MainWindow
             foreach (var recipe in acquisition.Recipes)
             {
                 fonts.Body13.Push();
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
                 ImGui.TextUnformatted(FontAwesomeIcon.Hammer.ToIconString());
                 ImGui.PopStyleColor();
                 ImGui.SameLine(0, Theme.Space3 * scale);
@@ -709,7 +709,7 @@ public partial class MainWindow
                 fonts.Body13.Pop();
             }
 
-            var flagWidth = FlagButtonWidth("Flag map");
+            var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag map"));
             var shown = 0;
             foreach (var vendor in acquisition.Vendors)
             {
@@ -725,7 +725,7 @@ public partial class MainWindow
 
                 shown++;
                 fonts.Body13.Push();
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
                 ImGui.TextUnformatted(FontAwesomeIcon.MapPin.ToIconString());
                 ImGui.PopStyleColor();
                 ImGui.SameLine(0, Theme.Space3 * scale);
@@ -757,7 +757,7 @@ public partial class MainWindow
                     ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
                     ImGui.SameLine();
                     ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
-                    if (Widgets.OutlinedButton($"Flag map##vendor{card.Entity.RowId}-{shown}"))
+                    if (Widgets.FlagButton("Flag map", $"vendor{card.Entity.RowId}-{shown}"))
                         MapLinkOpener.Open(flagLoc);
                     ImGui.PopStyleVar();
                 }
@@ -780,7 +780,7 @@ public partial class MainWindow
 
                 exchangesShown++;
                 fonts.Body13.Push();
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
                 ImGui.TextUnformatted(FontAwesomeIcon.ExchangeAlt.ToIconString());
                 ImGui.PopStyleColor();
                 ImGui.SameLine(0, Theme.Space3 * scale);
@@ -805,7 +805,7 @@ public partial class MainWindow
                     ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
                     ImGui.SameLine();
                     ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
-                    if (Widgets.OutlinedButton($"Flag map##exch{card.Entity.RowId}-{exchangesShown}"))
+                    if (Widgets.FlagButton("Flag map", $"exch{card.Entity.RowId}-{exchangesShown}"))
                         MapLinkOpener.Open(exchangeFlagLoc);
                     ImGui.PopStyleVar();
                     fonts.Citation12.Pop();
@@ -827,7 +827,7 @@ public partial class MainWindow
 
                 nodesShown++;
                 fonts.Body13.Push();
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
                 ImGui.TextUnformatted(FontAwesomeIcon.Leaf.ToIconString());
                 ImGui.PopStyleColor();
                 ImGui.SameLine(0, Theme.Space3 * scale);
@@ -850,7 +850,7 @@ public partial class MainWindow
                     ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
                     ImGui.SameLine();
                     ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
-                    if (Widgets.OutlinedButton($"Flag map##gather{card.Entity.RowId}-{nodesShown}"))
+                    if (Widgets.FlagButton("Flag map", $"gather{card.Entity.RowId}-{nodesShown}"))
                         MapLinkOpener.Open(nodeFlagLoc);
                     ImGui.PopStyleVar();
                     fonts.Citation12.Pop();
@@ -860,7 +860,7 @@ public partial class MainWindow
 
         if (plugin.Configuration.ShowUnlockRequirements)
         {
-            if (card.Entity is QuestEntity quest && (quest.UnlockChain.Count > 0 || quest.MsqRequirement != null))
+            if (card.Entity is QuestEntity quest && (quest.UnlockChains.Count > 0 || quest.MsqRequirement != null))
                 DrawUnlockChain(quest);
             if (card.Entity is DutyEntity { UnlockQuest: not null } duty)
                 DrawDutyUnlock(duty);
@@ -926,7 +926,7 @@ public partial class MainWindow
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
         var viewWidth = FlagButtonWidth("View");
-        var flagWidth = FlagButtonWidth("Flag");
+        var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag"));
 
         foreach (var group in card.CutsceneAppearances.GroupBy(a => (a.ExpansionOrder, a.Expansion)))
         {
@@ -969,14 +969,14 @@ public partial class MainWindow
                 {
                     ImGui.SameLine();
                     ImGui.SetCursorPosX(RowRightEdge() - viewWidth - (Theme.Space2 * scale) - flagWidth);
-                    if (Widgets.OutlinedButton($"Flag##sceneflag{npc.RowId}-{group.Key.ExpansionOrder}-{i}"))
+                    if (Widgets.FlagButton("Flag", $"sceneflag{npc.RowId}-{group.Key.ExpansionOrder}-{i}"))
                         MapLinkOpener.Open(flagLoc);
                 }
 
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(RowRightEdge() - viewWidth);
                 if (Widgets.OutlinedButton($"View##scene{npc.RowId}-{group.Key.ExpansionOrder}-{i}"))
-                    queuedNavigation = (appearance.Quest.Name, SearchCategory.Quests);
+                    queuedNavigation = (appearance.Quest.Name, SearchCategory.Unlocks);
                 ImGui.PopStyleVar();
                 fonts.Citation12.Pop();
             }
@@ -985,78 +985,91 @@ public partial class MainWindow
 
     private void DrawUnlockChain(QuestEntity quest)
     {
-        var scale = ImGuiHelpers.GlobalScale;
-        var fonts = plugin.Fonts;
-
         ImGui.Spacing();
         DetailLabel("UNLOCK REQUIREMENTS");
 
-        var chainQuests = quest.UnlockChain.Count(s => s.MsqVersion == null);
-
-        // "First quest" jumps straight to the deepest quest step - the one you
-        // would actually pick up first.
-        if (chainQuests > 0)
+        for (var i = 0; i < quest.UnlockChains.Count; i++)
         {
-            var firstQuest = quest.UnlockChain.Last(s => s.MsqVersion == null).Quest;
-            fonts.Citation12.Push();
-            ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-            var width = FlagButtonWidth("First quest");
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(RowRightEdge() - width);
-            if (Widgets.OutlinedButton($"First quest##chainstart{quest.RowId}"))
-                queuedNavigation = (firstQuest.Name, SearchCategory.Quests);
-            ImGui.PopStyleVar();
-            fonts.Citation12.Pop();
-        }
+            var chain = quest.UnlockChains[i];
+            if (chain.Steps.Count == 0)
+            {
+                if (chain.Gate is { } gate)
+                    MsqLine(gate);
+                continue;
+            }
 
-        if (chainQuests == 0)
-        {
-            foreach (var step in quest.UnlockChain)
-                MsqLine(step);
-            return;
+            if (i > 0)
+                ImGui.Spacing();
+            DrawChainBlock(quest, chain, i);
         }
+    }
 
-        var open = Active.ExpandedChains.Contains(quest.RowId);
+    private void DrawChainBlock(QuestEntity quest, QuestChain chain, int index)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+        var progress = plugin.QuestProgress;
+
+        var key = (quest.RowId, index);
+        var open = Active.ExpandedChains.Contains(key);
         var caret = (open ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight).ToIconString();
-        var count = chainQuests == 1 ? "1 quest" : $"{chainQuests} quests";
-        var summary = quest.MsqRequirement is { } msq
-            ? $"{caret} Quest chain: {count} + Main Scenario ({msq})"
-            : $"{caret} Quest chain: {count}";
+        var label = chain.Genre.Length > 0 ? chain.Genre : "Quest chain";
+        var count = chain.Steps.Count == 1 ? "1 quest" : $"{chain.Steps.Count} quests";
+        var summary = $"{caret} {label}: {count}";
+        if (progress.IsAvailable)
+            summary += $" ({chain.Steps.Count(s => progress.IsComplete(s.Quest.RowId))} done)";
+        if (chain.Gate is { } gateSummary)
+            summary += $" + Main Scenario ({gateSummary.Version})";
+        if (chain.Join == QuestJoin.Any)
+            summary += " (either)";
 
         fonts.Body13.Push();
-        if (Widgets.GhostButton($"{summary}##chaintoggle{quest.RowId}") && !Active.ExpandedChains.Remove(quest.RowId))
-            Active.ExpandedChains.Add(quest.RowId);
+        if (Widgets.GhostButton($"{summary}##chaintoggle{quest.RowId}-{index}") && !Active.ExpandedChains.Remove(key))
+            Active.ExpandedChains.Add(key);
         fonts.Body13.Pop();
 
         if (!open)
             return;
 
-        var viewWidth = FlagButtonWidth("View");
-        var flagWidth = FlagButtonWidth("Flag");
-        for (var i = 0; i < quest.UnlockChain.Count; i++)
+        // Truncation drops the earliest quests, so the pointer to the rest
+        // sits above the first listed step.
+        if (chain.Continues)
         {
-            var step = quest.UnlockChain[i];
-            var sibling = i > 0 && quest.UnlockChain[i - 1].Depth == step.Depth;
+            fonts.Citation12.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+            ImGui.TextUnformatted("chain continues - open the first quest to follow it further");
+            ImGui.PopStyleColor();
+            fonts.Citation12.Pop();
+        }
+
+        if (chain.Gate is { } gate)
+            MsqLine(gate);
+
+        var nextIdx = 0;
+        if (progress.IsAvailable)
+        {
+            nextIdx = -1;
+            for (var j = 0; j < chain.Steps.Count; j++)
+            {
+                if (!progress.IsComplete(chain.Steps[j].Quest.RowId))
+                {
+                    nextIdx = j;
+                    break;
+                }
+            }
+        }
+
+        var viewWidth = FlagButtonWidth("View");
+        var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag"));
+        for (var j = 0; j < chain.Steps.Count; j++)
+        {
+            var step = chain.Steps[j];
 
             fonts.Body13.Push();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-            ImGui.TextUnformatted(sibling ? (step.Join == QuestJoin.Any ? "or" : "and") : $"{step.Depth}.");
+            ImGui.TextUnformatted($"{j + 1}.");
             ImGui.PopStyleColor();
             ImGui.SameLine(0, Theme.Space3 * scale);
-            if (step.MsqVersion is { } stepMsq)
-            {
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
-                ImGui.TextUnformatted(FontAwesomeIcon.Lock.ToIconString());
-                ImGui.PopStyleColor();
-                ImGui.SameLine(0, Theme.Space3 * scale);
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
-                ImGui.TextUnformatted($"Main Scenario ({stepMsq})");
-                ImGui.PopStyleColor();
-                StepCheckmark(step.Quest.RowId);
-                fonts.Body13.Pop();
-                continue;
-            }
-
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
             ImGui.TextUnformatted(step.Quest.Name);
             ImGui.PopStyleColor();
@@ -1073,54 +1086,45 @@ public partial class MainWindow
 
             fonts.Citation12.Push();
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-            if (step.StartLocation is { } start)
+            if (j == nextIdx && step.StartLocation is { } start)
             {
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(RowRightEdge() - viewWidth - (Theme.Space2 * scale) - flagWidth);
-                if (Widgets.OutlinedButton($"Flag##chainflag{quest.RowId}-{i}"))
+                if (Widgets.FlagButton("Flag", $"chainflag{quest.RowId}-{index}-{j}"))
                     MapLinkOpener.Open(start);
             }
 
             ImGui.SameLine();
             ImGui.SetCursorPosX(RowRightEdge() - viewWidth);
-            if (Widgets.OutlinedButton($"View##chain{quest.RowId}-{i}"))
-                queuedNavigation = (step.Quest.Name, SearchCategory.Quests);
+            if (Widgets.OutlinedButton($"View##chain{quest.RowId}-{index}-{j}"))
+                queuedNavigation = (step.Quest.Name, SearchCategory.Unlocks);
             ImGui.PopStyleVar();
-            fonts.Citation12.Pop();
-        }
-
-        if (quest.ChainContinues)
-        {
-            fonts.Citation12.Push();
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-            ImGui.TextUnformatted("chain continues - open the last quest to follow it further");
-            ImGui.PopStyleColor();
             fonts.Citation12.Pop();
         }
     }
 
-    private void MsqLine(QuestChainStep step)
+    private void MsqLine(MsqGate gate)
     {
         var fonts = plugin.Fonts;
         fonts.Body13.Push();
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
         ImGui.TextUnformatted(FontAwesomeIcon.Lock.ToIconString());
         ImGui.PopStyleColor();
         ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
-        ImGui.TextUnformatted($"Main Scenario ({step.MsqVersion})");
+        ImGui.TextUnformatted($"Main Scenario ({gate.Version})");
         ImGui.PopStyleColor();
-        StepCheckmark(step.Quest.RowId);
+        StepCheckmark(gate.Quest.RowId);
         fonts.Body13.Pop();
     }
 
     private void StepCheckmark(uint questRowId)
     {
-        if (!GatingActive || !plugin.QuestProgress.IsComplete(questRowId))
+        if (!plugin.QuestProgress.IsComplete(questRowId))
             return;
 
         ImGui.SameLine(0, Theme.Space2 * ImGuiHelpers.GlobalScale);
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
         ImGui.TextUnformatted(FontAwesomeIcon.Check.ToIconString());
         ImGui.PopStyleColor();
     }
@@ -1141,7 +1145,7 @@ public partial class MainWindow
             && IsMsqTitleHidden(gate.Quest.RowId);
 
         fonts.Body13.Push();
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
         ImGui.TextUnformatted(FontAwesomeIcon.Lock.ToIconString());
         ImGui.PopStyleColor();
         ImGui.SameLine(0, Theme.Space3 * scale);
@@ -1176,13 +1180,13 @@ public partial class MainWindow
             ImGui.SameLine();
             ImGui.SetCursorPosX(RowRightEdge() - viewWidth - (Theme.Space2 * scale) - firstWidth);
             if (Widgets.OutlinedButton($"First quest##dutychainstart{duty.RowId}"))
-                queuedNavigation = (chainStart.Name, SearchCategory.Quests);
+                queuedNavigation = (chainStart.Name, SearchCategory.Unlocks);
         }
 
         ImGui.SameLine();
         ImGui.SetCursorPosX(RowRightEdge() - viewWidth);
         if (Widgets.OutlinedButton($"View quest##dutyunlock{duty.RowId}"))
-            queuedNavigation = (duty.UnlockQuest.Name, SearchCategory.Quests);
+            queuedNavigation = (duty.UnlockQuest.Name, SearchCategory.Unlocks);
         ImGui.PopStyleVar();
         fonts.Citation12.Pop();
     }

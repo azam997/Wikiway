@@ -28,7 +28,7 @@ public static class SectionExtractor
         var keywords = category switch
         {
             SearchCategory.Items or SearchCategory.Gathering => ItemKeywords,
-            SearchCategory.Unlockables => UnlockKeywords,
+            SearchCategory.Unlocks => UnlockKeywords,
             _ => null,
         };
         if (keywords == null)

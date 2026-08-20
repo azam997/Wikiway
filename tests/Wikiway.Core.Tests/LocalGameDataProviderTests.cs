@@ -25,19 +25,48 @@ public class LocalGameDataProviderTests
         Assert.Equal(2, card.MergedHidden);
     }
 
-    private sealed class StubStore(params NpcEntity[] npcs) : IGameDataStore
+    [Fact]
+    public async Task UnlocksCategoryReturnsQuestsAndUnlockables()
+    {
+        var store = new StubStore(
+            new QuestEntity(1, "The Navel", 20, "Main Scenario", []),
+            new DutyEntity(2, "The Navel", "Trials", 20, 0, false, false, 1) { Optional = true },
+            new NpcEntity(3, "The Navel Keeper", null));
+
+        var provider = new LocalGameDataProvider(store);
+        var result = await provider.SearchAsync(
+            new NormalizedQuery("the navel", "the navel", QueryIntent.Unlock, SearchCategory.Unlocks),
+            CancellationToken.None);
+
+        var entities = result.Results.OfType<EntityCardResult>().Select(c => c.Entity).ToList();
+        Assert.Contains(entities, e => e is QuestEntity);
+        Assert.Contains(entities, e => e is DutyEntity);
+        Assert.DoesNotContain(entities, e => e is NpcEntity);
+    }
+
+    private sealed class StubStore(params GameEntity[] entities) : IGameDataStore
     {
         public IReadOnlyList<NameIndexEntry> GetAllNames() =>
-            npcs.Select(n => new NameIndexEntry(EntityKind.Npc, n.RowId, n.Name.ToLowerInvariant())).ToList();
+            entities.Select(e => new NameIndexEntry(KindOf(e), e.RowId, e.Name.ToLowerInvariant())).ToList();
 
-        public NpcEntity? GetNpc(uint rowId) => npcs.FirstOrDefault(n => n.RowId == rowId);
-
-        public ItemEntity? GetItem(uint rowId) => null;
-        public QuestEntity? GetQuest(uint rowId) => null;
+        public NpcEntity? GetNpc(uint rowId) => Find<NpcEntity>(rowId);
+        public QuestEntity? GetQuest(uint rowId) => Find<QuestEntity>(rowId);
+        public DutyEntity? GetDuty(uint rowId) => Find<DutyEntity>(rowId);
+        public ItemEntity? GetItem(uint rowId) => Find<ItemEntity>(rowId);
         public MountEntity? GetMount(uint rowId) => null;
         public MinionEntity? GetMinion(uint rowId) => null;
         public AchievementEntity? GetAchievement(uint rowId) => null;
-        public DutyEntity? GetDuty(uint rowId) => null;
         public DutyEntity? FindDutyByTerritory(uint territoryTypeId) => null;
+
+        private T? Find<T>(uint rowId) where T : GameEntity =>
+            entities.OfType<T>().FirstOrDefault(e => e.RowId == rowId);
+
+        private static EntityKind KindOf(GameEntity e) => e switch
+        {
+            NpcEntity => EntityKind.Npc,
+            QuestEntity => EntityKind.Quest,
+            DutyEntity => EntityKind.Unlockable,
+            _ => EntityKind.Item,
+        };
     }
 }
