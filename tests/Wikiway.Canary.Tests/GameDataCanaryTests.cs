@@ -583,6 +583,39 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.InRange(solos, 80, 1000);
     }
 
+    // The light territory path used at zone-in re-implements solo detection
+    // without the unlock-chain resolution; the two must never disagree.
+    [Fact]
+    public void SoloDutyTerritoryPathAgreesWithFullResolution()
+    {
+        var store = fixture.Store();
+        var cfc = fixture.GameData!.GetExcelSheet<Lumina.Excel.Sheets.ContentFinderCondition>()!;
+
+        var solos = 0;
+        foreach (var row in cfc)
+        {
+            if (row.Name.IsEmpty || row.TerritoryType.RowId == 0 || row.ContentType.RowId is not (7 or 27))
+                continue;
+
+            // Another CFC row can win the territory lookup; only the winner
+            // is comparable.
+            if (store.FindSoloDutyName(row.TerritoryType.RowId) is not { } light)
+                continue;
+
+            solos++;
+            var full = store.FindDutyByTerritory(row.TerritoryType.RowId);
+            Assert.NotNull(full);
+            Assert.True(full.Solo, $"{full.Name}: light path says solo, full resolution disagrees");
+            Assert.Equal(full.Name, light);
+        }
+
+        Assert.True(solos > 80, $"only {solos} solo territories resolved - the light path drifted");
+
+        var dungeon = cfc.First(r =>
+            !r.Name.IsEmpty && r.Name.ExtractText().Contains("Sastasha", StringComparison.OrdinalIgnoreCase));
+        Assert.Null(store.FindSoloDutyName(dungeon.TerritoryType.RowId));
+    }
+
     private static int Count(IReadOnlyList<NameIndexEntry> names, EntityKind kind) =>
         names.Count(n => n.Kind == kind);
 }

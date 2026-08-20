@@ -48,9 +48,22 @@ public sealed class ThrottlingHandler : DelegatingHandler
     // with no body, so a shallow copy is enough.
     private static HttpRequestMessage Clone(HttpRequestMessage request)
     {
-        var clone = new HttpRequestMessage(request.Method, request.RequestUri);
+        var clone = new HttpRequestMessage(request.Method, request.RequestUri)
+        {
+            Version = request.Version,
+            VersionPolicy = request.VersionPolicy,
+        };
         foreach (var header in request.Headers)
             clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        foreach (var option in (IDictionary<string, object?>)request.Options)
+            ((IDictionary<string, object?>)clone.Options)[option.Key] = option.Value;
         return clone;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            gate.Dispose();
+        base.Dispose(disposing);
     }
 }

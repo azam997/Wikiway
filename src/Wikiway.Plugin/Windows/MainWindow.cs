@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +21,7 @@ public partial class MainWindow : Window, IDisposable
     private const double ScoreGate = 0.2;
     private const int StyleColorCount = 21;
     private const int StyleVarCount = 3;
+    private const int QueryCapacity = 256;
 
     // Hint entities are canary-pinned names, so the samples always resolve.
     private static readonly (string Label, string Hint, SearchCategory Value)[] Categories =
@@ -69,13 +71,21 @@ public partial class MainWindow : Window, IDisposable
             session.Dispose();
     }
 
+    internal Task[] ActiveSearches() =>
+        sessions.Where(s => s.Pending != null).Select(s => (Task)s.Pending!).ToArray();
+
     private void OnLogout(int type, int code) => revealedSpoilers.Clear();
 
     public void SubmitQuery(string query) => SubmitQuery(query, SearchCategory.Other);
 
+    // Callers run on the game main thread outside Draw (commands, context
+    // menu, notification clicks); mid-draw paths queue via queuedNavigation.
     public void SubmitQuery(string query, SearchCategory category)
     {
-        categoryIndex = Array.FindIndex(Categories, c => c.Value == category);
+        if (query.Length > QueryCapacity)
+            query = query[..QueryCapacity];
+        var index = Array.FindIndex(Categories, c => c.Value == category);
+        categoryIndex = index >= 0 ? index : Categories.Length - 1;
         Active.QueryInput = query;
         RunQuery(Active, category);
     }
@@ -136,32 +146,50 @@ public partial class MainWindow : Window, IDisposable
         DrawCategoryStrip();
 
         ImGui.PushID(categoryIndex);
-        if (Active.PendingScroll is { } scrollY)
+        try
         {
-            ImGui.SetScrollY(scrollY);
-            Active.PendingScroll = null;
+            if (Active.PendingScroll is { } scrollY)
+            {
+                // SetScrollY clamps against ScrollMax from the previous frame,
+                // which right after a tab switch still belongs to the old tab -
+                // hence the second application a frame later.
+                ImGui.SetScrollY(scrollY);
+                if (--Active.PendingScrollFrames <= 0)
+                    Active.PendingScroll = null;
+            }
+
+            DrawSearchInput();
+            Widgets.FadingRule();
+            ImGui.Spacing();
+
+            HarvestAll();
+
+            // Once a search occupies the tab, the journal list moves behind a
+            // button above the results instead.
+            if (QuestPickerVisible && (Active.Pending != null || Active.Response != null || Active.Error != null))
+                DrawQuestPicker();
+
+            if (Active.Pending != null)
+                DrawPendingState();
+            else if (Active.Error != null)
+                DrawErrorState();
+            else if (Active.Response == null)
+                DrawIdleState();
+            else
+                DrawResults(Active.Response);
         }
-
-        DrawSearchInput();
-        Widgets.FadingRule();
-        ImGui.Spacing();
-
-        HarvestAll();
-
-        // Once a search occupies the tab, the journal list moves behind a
-        // button above the results instead.
-        if (QuestPickerVisible && (Active.Pending != null || Active.Response != null || Active.Error != null))
-            DrawQuestPicker();
-
-        if (Active.Pending != null)
-            DrawPendingState();
-        else if (Active.Error != null)
-            DrawErrorState();
-        else if (Active.Response == null)
-            DrawIdleState();
-        else
-            DrawResults(Active.Response);
-        ImGui.PopID();
+        catch (Exception e)
+        {
+            // Dalamud catches draw exceptions, but recovering here keeps the
+            // window alive; dropping the response removes whatever crashed it.
+            Plugin.Log.Error(e, "Main window draw failed; dropping the current result view.");
+            Active.Response = null;
+            Active.Error ??= "something went wrong drawing results - run the search again";
+        }
+        finally
+        {
+            ImGui.PopID();
+        }
     }
 
     private static readonly string LogoPath = Path.Combine(
@@ -233,6 +261,7 @@ public partial class MainWindow : Window, IDisposable
             {
                 categoryIndex = i;
                 Active.PendingScroll = Active.ScrollY;
+                Active.PendingScrollFrames = 2;
             }
 
             ImGui.PopStyleColor(4);
@@ -458,12 +487,27 @@ public partial class MainWindow : Window, IDisposable
                 session.LowRelevanceOpen = false;
                 session.ExpandedRows.Clear();
                 session.ExpandedChains.Clear();
+                session.ExpandedScenes.Clear();
+                // Grouping cutscene appearances here keeps the per-frame scene
+                // tab from re-running GroupBy on every draw.
+                session.SceneGroups.Clear();
+                foreach (var hit in session.Response.Results)
+                {
+                    if (hit is EntityCardResult { CutsceneAppearances.Count: > 0 } sceneCard)
+                        session.SceneGroups[RowKey(sceneCard)] = sceneCard.CutsceneAppearances
+                            .GroupBy(a => (a.ExpansionOrder, a.Expansion))
+                            .Select(g => new SceneGroup(g.Key.ExpansionOrder, g.Key.Expansion, g.ToList()))
+                            .ToList();
+                }
+
                 if (session.AboveGate.Count > 0 && session.AboveGate[0] is EntityCardResult top && HasDetail(top))
                     session.ExpandedRows.Add(RowKey(top));
             }
             else if (!session.Pending.IsCanceled)
             {
-                session.Error = session.Pending.Exception?.GetBaseException().Message ?? "something went wrong";
+                var failure = session.Pending.Exception?.GetBaseException();
+                Plugin.Log.Error(failure, "Search failed.");
+                session.Error = failure?.Message ?? "something went wrong";
             }
 
             session.Pending = null;
@@ -484,6 +528,7 @@ public partial class MainWindow : Window, IDisposable
         session.Response = null;
         session.Error = null;
         session.PendingScroll = 0f;
+        session.PendingScrollFrames = 2;
         // The pipeline runs off-thread, so the progress snapshot it filters
         // against must be captured here, still on the main thread.
         plugin.QuestProgress.Refresh();

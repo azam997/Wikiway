@@ -39,7 +39,11 @@ public sealed class CachingHandler : DelegatingHandler
         {
             var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             await cache.SetAsync(key, body, ct).ConfigureAwait(false);
-            response.Content = new StringContent(body);
+            var replacement = new StringContent(body);
+            if (response.Content.Headers.ContentType is { } mediaType)
+                replacement.Headers.ContentType = mediaType;
+            response.Content.Dispose();
+            response.Content = replacement;
         }
 
         return response;

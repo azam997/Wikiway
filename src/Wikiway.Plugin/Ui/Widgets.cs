@@ -167,6 +167,11 @@ internal static class Widgets
                 high = mid - 1;
         }
 
+        // The binary search works in UTF-16 units; cutting between a surrogate
+        // pair would hand ImGui a lone half.
+        if (low > 0 && char.IsHighSurrogate(text[low - 1]))
+            low--;
+
         ImGui.TextUnformatted(text[..low] + "…");
     }
 }

@@ -12,7 +12,9 @@ internal sealed unsafe class QuestProgressTracker
     private const long StaleMs = 2000;
 
     private volatile Snapshot? snapshot;
-    private long lastRefresh = long.MinValue;
+    // Not long.MinValue: TickCount64 minus that overflows negative, and the
+    // stale check would never fire until the first forced Refresh.
+    private long lastRefresh = -StaleMs;
     private List<uint>? questRowIds;
 
     public bool IsAvailable => snapshot != null;

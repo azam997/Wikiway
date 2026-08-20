@@ -15,14 +15,18 @@ public sealed class LocalGameDataProvider : ISearchProvider
     private readonly Func<uint, bool>? sceneQuestVisible;
     private readonly Task<FuzzyNameIndex> indexTask;
 
-    public LocalGameDataProvider(IGameDataStore store, Func<uint, bool>? sceneQuestVisible = null)
+    public LocalGameDataProvider(IGameDataStore store, Func<uint, bool>? sceneQuestVisible = null,
+        CancellationToken lifetime = default)
     {
         this.store = store;
         this.sceneQuestVisible = sceneQuestVisible;
         // Building the index walks every sheet, so it starts warming immediately
         // rather than stalling the first query.
-        indexTask = Task.Run(() => new FuzzyNameIndex(store.GetAllNames()));
+        indexTask = Task.Run(() => new FuzzyNameIndex(store.GetAllNames(lifetime)), lifetime);
     }
+
+    // Lets the plugin wait for the build to quiesce before unloading.
+    public Task IndexTask => indexTask;
 
     public string Id => ProviderId;
 

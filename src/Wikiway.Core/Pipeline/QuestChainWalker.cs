@@ -27,7 +27,10 @@ public static class QuestChainWalker
             if (resolved is { MainScenario: true })
             {
                 msqVersion ??= resolved.Expansion;
-                gateOnly.Add(new QuestChain([], new MsqGate(link, resolved.Expansion), Join: origin.PrerequisiteJoin));
+                // MSQ is linear, so two prerequisites gated on the same patch
+                // would render as duplicate Main Scenario lines.
+                if (!gateOnly.Exists(c => c.Gate!.Version == resolved.Expansion))
+                    gateOnly.Add(new QuestChain([], new MsqGate(link, resolved.Expansion), Join: origin.PrerequisiteJoin));
                 continue;
             }
 

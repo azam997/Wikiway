@@ -1,3 +1,4 @@
+using System.Globalization;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
 using Wikiway.Core.Pipeline;
@@ -84,7 +85,8 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
             var bodies = new List<WikiSectionText>(picked.Count);
             foreach (var section in picked)
             {
-                var html = await client.GetSectionHtmlAsync(page.Title, int.Parse(section.Index), ct)
+                var html = await client.GetSectionHtmlAsync(
+                        page.Title, int.Parse(section.Index, CultureInfo.InvariantCulture), ct)
                     .ConfigureAwait(false);
                 if (html == null)
                     continue;
@@ -108,6 +110,8 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider, IDocumentRetriev
         }
         catch (HttpRequestException)
         {
+            // Sections are enrichment on top of the page hit; a wiki hiccup
+            // here shouldn't fail the whole search.
             return null;
         }
     }

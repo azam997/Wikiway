@@ -75,14 +75,17 @@ public class TutorialWindow : Window
             IsOpen = false;
         }
 
-        var lastPage = page == Pages.Length - 1;
+        // Back's visibility and the trailing SameLine key off the page as it
+        // was at the top of the frame, so a click doesn't shift the row until
+        // the next frame; the last-page check reads the post-click page.
+        var showBack = page > 0;
         ImGui.SameLine(ImGui.GetContentRegionAvail().X - (110 * ImGuiHelpers.GlobalScale));
-        if (page > 0 && ImGui.Button("Back##tutorial"))
+        if (showBack && ImGui.Button("Back##tutorial"))
             page--;
-        if (page > 0)
+        if (showBack)
             ImGui.SameLine();
 
-        if (lastPage)
+        if (page == Pages.Length - 1)
         {
             if (ImGui.Button("Got it##tutorial"))
             {

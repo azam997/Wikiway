@@ -1,3 +1,4 @@
+using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
@@ -61,39 +62,90 @@ public sealed class LuminaGameDataStore : IGameDataStore
         this.gameData = gameData;
     }
 
-    public IReadOnlyList<NameIndexEntry> GetAllNames()
+    // The `!` alternative turns a renamed sheet after a game patch into a bare
+    // NullReferenceException deep in a background task; name the sheet instead.
+    private ExcelSheet<T> Sheet<T>() where T : struct, IExcelRow<T> =>
+        gameData.GetExcelSheet<T>()
+        ?? throw new InvalidOperationException($"{typeof(T).Name} sheet missing - game patch?");
+
+    private SubrowExcelSheet<T> SubrowSheet<T>() where T : struct, IExcelSubrow<T> =>
+        gameData.GetSubrowExcelSheet<T>()
+        ?? throw new InvalidOperationException($"{typeof(T).Name} sheet missing - game patch?");
+
+    public void WarmAll(CancellationToken ct)
+    {
+        EnsureAcquisitionLookups();
+        ct.ThrowIfCancellationRequested();
+        UnlockQuestsByInstance();
+        ct.ThrowIfCancellationRequested();
+        NpcLevels();
+        ct.ThrowIfCancellationRequested();
+        DutyTerritoryLookup();
+    }
+
+    public IReadOnlyList<NameIndexEntry> GetAllNames(CancellationToken ct = default)
     {
         var names = new List<NameIndexEntry>(80_000);
 
         // Gatherables carry their own kind so the Gathering lens can scope to
         // them; the Items lens searches both kinds.
         var gatherable = GatheringBases();
-        foreach (var row in gameData.GetExcelSheet<Item>()!)
+        foreach (var row in Sheet<Item>())
             AddName(names, gatherable.ContainsKey(row.RowId) ? EntityKind.Gatherable : EntityKind.Item,
                 row.RowId, row.Name.ExtractText());
 
-        foreach (var row in gameData.GetExcelSheet<ENpcResident>()!)
+        ct.ThrowIfCancellationRequested();
+        foreach (var row in Sheet<ENpcResident>())
             AddName(names, EntityKind.Npc, row.RowId, row.Singular.ExtractText());
 
-        foreach (var row in gameData.GetExcelSheet<Quest>()!)
+        ct.ThrowIfCancellationRequested();
+        foreach (var row in Sheet<Quest>())
             AddName(names, EntityKind.Quest, row.RowId, row.Name.ExtractText());
 
-        foreach (var row in gameData.GetExcelSheet<Mount>()!)
+        ct.ThrowIfCancellationRequested();
+        foreach (var row in Sheet<Mount>())
             AddName(names, EntityKind.Mount, row.RowId, row.Singular.ExtractText());
 
-        foreach (var row in gameData.GetExcelSheet<Companion>()!)
+        foreach (var row in Sheet<Companion>())
             AddName(names, EntityKind.Minion, row.RowId, row.Singular.ExtractText());
 
-        foreach (var row in gameData.GetExcelSheet<Achievement>()!)
+        foreach (var row in Sheet<Achievement>())
             AddName(names, EntityKind.Achievement, row.RowId, row.Name.ExtractText());
 
-        foreach (var row in gameData.GetExcelSheet<ContentFinderCondition>()!)
+        ct.ThrowIfCancellationRequested();
+        foreach (var row in Sheet<ContentFinderCondition>())
             AddName(names, IsUnlockable(row) ? EntityKind.Unlockable : EntityKind.Duty, row.RowId, row.Name.ExtractText());
 
         foreach (var zone in CuratedZones)
             AddName(names, EntityKind.Unlockable, zone.RowId, zone.Name);
 
         return names;
+    }
+
+    public string? GetItemName(uint rowId)
+    {
+        var row = Sheet<Item>().GetRowOrDefault(rowId);
+        return row == null || row.Value.Name.IsEmpty ? null : row.Value.Name.ExtractText();
+    }
+
+    public string? GetNpcName(uint rowId)
+    {
+        var row = Sheet<ENpcResident>().GetRowOrDefault(rowId);
+        return row == null || row.Value.Singular.IsEmpty ? null : TitleCase(row.Value.Singular.ExtractText());
+    }
+
+    public string? FindSoloDutyName(uint territoryTypeId)
+    {
+        if (!DutyTerritoryLookup().TryGetValue(territoryTypeId, out var rowId))
+            return null;
+
+        var row = Sheet<ContentFinderCondition>().GetRowOrDefault(rowId);
+        if (row == null || row.Value.Name.IsEmpty)
+            return null;
+
+        return row.Value.ContentType.RowId is ContentTypeQuestBattles or ContentTypeMaskedCarnivale
+            ? row.Value.Name.ExtractText()
+            : null;
     }
 
     private bool IsUnlockable(ContentFinderCondition row)
@@ -138,7 +190,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
         // Several quests can reference one instance (relic re-checks, later
         // chains); the lowest quest id is the original unlock.
         var lookup = new Dictionary<uint, uint>();
-        foreach (var quest in gameData.GetExcelSheet<Quest>()!)
+        foreach (var quest in Sheet<Quest>())
         {
             if (quest.Name.IsEmpty)
                 continue;
@@ -178,7 +230,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     private bool IsMainScenario(uint questRowId)
     {
-        var quest = gameData.GetExcelSheet<Quest>()!.GetRowOrDefault(questRowId);
+        var quest = Sheet<Quest>().GetRowOrDefault(questRowId);
         return IsMainScenario(
             quest?.JournalGenre.ValueNullable?.JournalCategory.ValueNullable?.Name.ExtractText() ?? "");
     }
@@ -194,7 +246,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     public ItemEntity? GetItem(uint rowId)
     {
-        var row = gameData.GetExcelSheet<Item>()!.GetRowOrDefault(rowId);
+        var row = Sheet<Item>().GetRowOrDefault(rowId);
         if (row == null || row.Value.Name.IsEmpty)
             return null;
 
@@ -208,7 +260,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
             BuildAcquisition(rowId, row.Value.PriceMid));
     }
 
-    private ItemAcquisition? BuildAcquisition(uint itemRowId, uint gilPrice)
+    private void EnsureAcquisitionLookups()
     {
         if (recipesByItem == null || shopsByItem == null || npcsByShop == null ||
             specialShopsByItem == null || npcsBySpecialShop == null ||
@@ -225,11 +277,16 @@ public sealed class LuminaGameDataStore : IGameDataStore
                 gatheringPointByBase ??= BuildGatheringPointLookup();
             }
         }
+    }
+
+    private ItemAcquisition? BuildAcquisition(uint itemRowId, uint gilPrice)
+    {
+        EnsureAcquisitionLookups();
 
         var recipes = new List<RecipeSource>();
-        if (recipesByItem.TryGetValue(itemRowId, out var recipeIds))
+        if (recipesByItem!.TryGetValue(itemRowId, out var recipeIds))
         {
-            var sheet = gameData.GetExcelSheet<Recipe>()!;
+            var sheet = Sheet<Recipe>();
             foreach (var recipeId in recipeIds)
             {
                 var recipe = sheet.GetRow(recipeId);
@@ -250,17 +307,17 @@ public sealed class LuminaGameDataStore : IGameDataStore
         }
 
         var vendors = new List<VendorSource>();
-        if (shopsByItem.TryGetValue(itemRowId, out var shopIds))
+        if (shopsByItem!.TryGetValue(itemRowId, out var shopIds))
         {
             var seen = new HashSet<(string Name, uint MapId, float X, float Y)>();
             foreach (var shopId in shopIds)
             {
-                if (!npcsByShop.TryGetValue(shopId, out var npcIds))
+                if (!npcsByShop!.TryGetValue(shopId, out var npcIds))
                     continue;
 
                 foreach (var npcId in npcIds)
                 {
-                    var resident = gameData.GetExcelSheet<ENpcResident>()!.GetRowOrDefault(npcId);
+                    var resident = Sheet<ENpcResident>().GetRowOrDefault(npcId);
                     if (resident == null || resident.Value.Singular.IsEmpty)
                         continue;
 
@@ -299,7 +356,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
         var seen = new HashSet<(string Shop, string Npc, uint MapId, float X, float Y)>();
         foreach (var shopId in shopIds)
         {
-            var shop = gameData.GetExcelSheet<SpecialShop>()!.GetRowOrDefault(shopId);
+            var shop = Sheet<SpecialShop>().GetRowOrDefault(shopId);
             if (shop == null || !npcsBySpecialShop!.TryGetValue(shopId, out var npcIds))
                 continue;
 
@@ -310,7 +367,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
             var shopName = shop.Value.Name.ExtractText();
             foreach (var npcId in npcIds)
             {
-                var resident = gameData.GetExcelSheet<ENpcResident>()!.GetRowOrDefault(npcId);
+                var resident = Sheet<ENpcResident>().GetRowOrDefault(npcId);
                 if (resident == null || resident.Value.Singular.IsEmpty)
                     continue;
 
@@ -360,7 +417,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
         var seen = new HashSet<(string Type, string Zone, float X, float Y)>();
         foreach (var baseId in baseIds)
         {
-            var pointBase = gameData.GetExcelSheet<GatheringPointBase>()!.GetRowOrDefault(baseId);
+            var pointBase = Sheet<GatheringPointBase>().GetRowOrDefault(baseId);
             if (pointBase == null)
                 continue;
 
@@ -381,10 +438,10 @@ public sealed class LuminaGameDataStore : IGameDataStore
         if (!gatheringPointByBase!.TryGetValue(baseRowId, out var pointId))
             return null;
 
-        var point = gameData.GetExcelSheet<GatheringPoint>()!.GetRowOrDefault(pointId);
+        var point = Sheet<GatheringPoint>().GetRowOrDefault(pointId);
         var territory = point?.TerritoryType.ValueNullable;
         var map = territory?.Map.ValueNullable;
-        var exported = gameData.GetExcelSheet<ExportedGatheringPoint>()!.GetRowOrDefault(baseRowId);
+        var exported = Sheet<ExportedGatheringPoint>().GetRowOrDefault(baseRowId);
         if (territory == null || map == null || exported == null)
             return null;
 
@@ -397,7 +454,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
     private Dictionary<uint, List<uint>> BuildRecipeLookup()
     {
         var lookup = new Dictionary<uint, List<uint>>();
-        foreach (var recipe in gameData.GetExcelSheet<Recipe>()!)
+        foreach (var recipe in Sheet<Recipe>())
         {
             if (recipe.ItemResult.RowId != 0)
                 Add(lookup, recipe.ItemResult.RowId, recipe.RowId);
@@ -409,7 +466,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
     private Dictionary<uint, List<uint>> BuildShopItemLookup()
     {
         var lookup = new Dictionary<uint, List<uint>>();
-        foreach (var group in gameData.GetSubrowExcelSheet<GilShopItem>()!)
+        foreach (var group in SubrowSheet<GilShopItem>())
         {
             foreach (var sub in group)
             {
@@ -425,7 +482,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
     {
         // Gil shop event ids live in the 0x40000 block of ENpcData.
         var lookup = new Dictionary<uint, List<uint>>();
-        foreach (var npcBase in gameData.GetExcelSheet<ENpcBase>()!)
+        foreach (var npcBase in Sheet<ENpcBase>())
         {
             foreach (var handler in npcBase.ENpcData)
             {
@@ -440,7 +497,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
     private Dictionary<uint, List<uint>> BuildSpecialShopItemLookup()
     {
         var lookup = new Dictionary<uint, List<uint>>();
-        foreach (var shop in gameData.GetExcelSheet<SpecialShop>()!)
+        foreach (var shop in Sheet<SpecialShop>())
         {
             foreach (var entry in shop.Item)
             {
@@ -459,7 +516,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
     {
         // Special shop event ids live in the 0x1B0000 block of ENpcData.
         var lookup = new Dictionary<uint, List<uint>>();
-        foreach (var npcBase in gameData.GetExcelSheet<ENpcBase>()!)
+        foreach (var npcBase in Sheet<ENpcBase>())
         {
             foreach (var handler in npcBase.ENpcData)
             {
@@ -488,14 +545,14 @@ public sealed class LuminaGameDataStore : IGameDataStore
     private Dictionary<uint, List<uint>> BuildGatheringItemLookup()
     {
         var itemsByGatheringItem = new Dictionary<uint, uint>();
-        foreach (var row in gameData.GetExcelSheet<GatheringItem>()!)
+        foreach (var row in Sheet<GatheringItem>())
         {
             if (row.Item.RowId != 0)
                 itemsByGatheringItem.TryAdd(row.RowId, row.Item.RowId);
         }
 
         var lookup = new Dictionary<uint, List<uint>>();
-        foreach (var pointBase in gameData.GetExcelSheet<GatheringPointBase>()!)
+        foreach (var pointBase in Sheet<GatheringPointBase>())
         {
             foreach (var entry in pointBase.Item)
             {
@@ -510,7 +567,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
     private Dictionary<uint, uint> BuildGatheringPointLookup()
     {
         var lookup = new Dictionary<uint, uint>();
-        foreach (var point in gameData.GetExcelSheet<GatheringPoint>()!)
+        foreach (var point in Sheet<GatheringPoint>())
         {
             if (point.GatheringPointBase.RowId != 0 && point.TerritoryType.RowId != 0 && point.PlaceName.RowId != 0)
                 lookup.TryAdd(point.GatheringPointBase.RowId, point.RowId);
@@ -528,7 +585,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     public NpcEntity? GetNpc(uint rowId)
     {
-        var row = gameData.GetExcelSheet<ENpcResident>()!.GetRowOrDefault(rowId);
+        var row = Sheet<ENpcResident>().GetRowOrDefault(rowId);
         if (row == null || row.Value.Singular.IsEmpty)
             return null;
 
@@ -541,7 +598,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     private (int Count, IReadOnlyList<CutsceneAppearance> SceneQuests) ReadEventHandlers(uint npcRowId)
     {
-        var row = gameData.GetExcelSheet<ENpcBase>()!.GetRowOrDefault(npcRowId);
+        var row = Sheet<ENpcBase>().GetRowOrDefault(npcRowId);
         if (row == null)
             return (0, []);
 
@@ -557,7 +614,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
             if (handler.RowId is < 0x10000 or >= 0x20000)
                 continue;
 
-            var quest = gameData.GetExcelSheet<Quest>()!.GetRowOrDefault(handler.RowId);
+            var quest = Sheet<Quest>().GetRowOrDefault(handler.RowId);
             if (quest == null || quest.Value.Name.IsEmpty)
                 continue;
 
@@ -582,7 +639,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     private QuestEntity? BuildQuest(uint rowId)
     {
-        var row = gameData.GetExcelSheet<Quest>()!.GetRowOrDefault(rowId);
+        var row = Sheet<Quest>().GetRowOrDefault(rowId);
         if (row == null || row.Value.Name.IsEmpty)
             return null;
 
@@ -614,7 +671,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     public MountEntity? GetMount(uint rowId)
     {
-        var row = gameData.GetExcelSheet<Mount>()!.GetRowOrDefault(rowId);
+        var row = Sheet<Mount>().GetRowOrDefault(rowId);
         if (row == null || row.Value.Singular.IsEmpty)
             return null;
 
@@ -623,7 +680,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     public MinionEntity? GetMinion(uint rowId)
     {
-        var row = gameData.GetExcelSheet<Companion>()!.GetRowOrDefault(rowId);
+        var row = Sheet<Companion>().GetRowOrDefault(rowId);
         if (row == null || row.Value.Singular.IsEmpty)
             return null;
 
@@ -632,7 +689,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     public AchievementEntity? GetAchievement(uint rowId)
     {
-        var row = gameData.GetExcelSheet<Achievement>()!.GetRowOrDefault(rowId);
+        var row = Sheet<Achievement>().GetRowOrDefault(rowId);
         if (row == null || row.Value.Name.IsEmpty)
             return null;
 
@@ -648,7 +705,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
         if (rowId >= CuratedZoneBase)
             return GetCuratedZone(rowId);
 
-        var row = gameData.GetExcelSheet<ContentFinderCondition>()!.GetRowOrDefault(rowId);
+        var row = Sheet<ContentFinderCondition>().GetRowOrDefault(rowId);
         if (row == null || row.Value.Name.IsEmpty)
             return null;
 
@@ -713,7 +770,10 @@ public sealed class LuminaGameDataStore : IGameDataStore
     private static bool IsFieldArea(ContentFinderCondition row) =>
         row.ContentLinkType == ContentLinkTypePublicContent && AreaContentTypes.Contains(row.ContentType.RowId);
 
-    public DutyEntity? FindDutyByTerritory(uint territoryTypeId)
+    public DutyEntity? FindDutyByTerritory(uint territoryTypeId) =>
+        DutyTerritoryLookup().TryGetValue(territoryTypeId, out var rowId) ? GetDuty(rowId) : null;
+
+    private Dictionary<uint, uint> DutyTerritoryLookup()
     {
         var lookup = dutyByTerritory;
         if (lookup == null)
@@ -724,13 +784,13 @@ public sealed class LuminaGameDataStore : IGameDataStore
             }
         }
 
-        return lookup.TryGetValue(territoryTypeId, out var rowId) ? GetDuty(rowId) : null;
+        return lookup;
     }
 
     private Dictionary<uint, uint> BuildDutyTerritoryLookup()
     {
         var lookup = new Dictionary<uint, uint>();
-        foreach (var duty in gameData.GetExcelSheet<ContentFinderCondition>()!)
+        foreach (var duty in Sheet<ContentFinderCondition>())
         {
             if (duty.TerritoryType.RowId != 0 && !duty.Name.IsEmpty)
                 lookup.TryAdd(duty.TerritoryType.RowId, duty.RowId);
@@ -739,7 +799,10 @@ public sealed class LuminaGameDataStore : IGameDataStore
         return lookup;
     }
 
-    private MapLocation? FindLocation(uint npcRowId)
+    private MapLocation? FindLocation(uint npcRowId) =>
+        NpcLevels().TryGetValue(npcRowId, out var level) ? ToMapLocation(level) : null;
+
+    private Dictionary<uint, Level> NpcLevels()
     {
         var levels = npcLevels;
         if (levels == null)
@@ -750,7 +813,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
             }
         }
 
-        return levels.TryGetValue(npcRowId, out var level) ? ToMapLocation(level) : null;
+        return levels;
     }
 
     private static MapLocation? ToMapLocation(Level level)
@@ -773,7 +836,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
     {
         // A full Level scan is ~100k rows; do it once and keep the ENpc entries.
         var lookup = new Dictionary<uint, Level>();
-        foreach (var level in gameData.GetExcelSheet<Level>()!)
+        foreach (var level in Sheet<Level>())
         {
             if (level.Type == LevelObjectTypeEventNpc)
                 lookup.TryAdd(level.Object.RowId, level);

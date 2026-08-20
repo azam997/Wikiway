@@ -9,7 +9,9 @@ namespace Wikiway.Plugin.GameIntegration;
 
 internal sealed class ContextMenuIntegration : IDisposable
 {
+    private const ulong CollectableItemIdOffset = 500_000;
     private const ulong HqItemIdOffset = 1_000_000;
+    private const ulong EventItemIdBase = 2_000_000;
 
     private readonly MainWindow mainWindow;
     private readonly IGameDataStore store;
@@ -33,25 +35,31 @@ internal sealed class ContextMenuIntegration : IDisposable
         switch (args.Target)
         {
             case MenuTargetInventory { TargetItem: { ItemId: not 0 } item }:
-                AddLookup(args, store.GetItem(item.BaseItemId)?.Name, SearchCategory.Items);
+                AddLookup(args, store.GetItemName(item.BaseItemId), SearchCategory.Items);
                 break;
 
             case MenuTargetDefault when args.AddonName == "ChatLog":
             {
                 // The chat context menu target doesn't carry the item link; the
-                // hovered-item state does, with the HQ flag folded into the id.
+                // hovered-item state does, with the HQ or collectable flag
+                // folded into the id. Event items live in a different sheet.
                 var hovered = Plugin.GameGui.HoveredItem;
-                if (hovered != 0)
+                if (hovered is not 0 and < EventItemIdBase)
                 {
-                    var baseId = (uint)(hovered >= HqItemIdOffset ? hovered - HqItemIdOffset : hovered);
-                    AddLookup(args, store.GetItem(baseId)?.Name, SearchCategory.Items);
+                    var baseId = (uint)(hovered switch
+                    {
+                        >= HqItemIdOffset => hovered - HqItemIdOffset,
+                        >= CollectableItemIdOffset => hovered - CollectableItemIdOffset,
+                        _ => hovered,
+                    });
+                    AddLookup(args, store.GetItemName(baseId), SearchCategory.Items);
                 }
 
                 break;
             }
 
             case MenuTargetDefault { TargetObject: { ObjectKind: ObjectKind.EventNpc } npc }:
-                AddLookup(args, store.GetNpc(npc.BaseId)?.Name ?? npc.Name.TextValue, SearchCategory.Npcs);
+                AddLookup(args, store.GetNpcName(npc.BaseId) ?? npc.Name.TextValue, SearchCategory.Npcs);
                 break;
         }
     }

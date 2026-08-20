@@ -4,7 +4,7 @@ namespace Wikiway.Core.Abstractions;
 
 public interface IGameDataStore
 {
-    IReadOnlyList<NameIndexEntry> GetAllNames();
+    IReadOnlyList<NameIndexEntry> GetAllNames(CancellationToken ct = default);
 
     ItemEntity? GetItem(uint rowId);
     NpcEntity? GetNpc(uint rowId);
@@ -15,6 +15,12 @@ public interface IGameDataStore
     DutyEntity? GetDuty(uint rowId);
 
     DutyEntity? FindDutyByTerritory(uint territoryTypeId);
+
+    // Name-only reads for game-thread callbacks (context menu, territory
+    // change): they must never trigger the heavy lazy index builds above.
+    string? GetItemName(uint rowId);
+    string? GetNpcName(uint rowId);
+    string? FindSoloDutyName(uint territoryTypeId);
 }
 
 public enum EntityKind

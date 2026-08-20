@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
@@ -16,6 +17,11 @@ namespace Wikiway.Plugin.Windows;
 public partial class MainWindow
 {
     private const int MaxVendorLines = 6;
+
+    // The game renders coordinates with a period on every client language;
+    // CurrentCulture would show "11,7" on some.
+    private static string Coords(float x, float y) =>
+        string.Create(CultureInfo.InvariantCulture, $"{x:0.0}, {y:0.0}");
 
     private Vector2 headerMin;
     private Vector2 headerMax;
@@ -41,7 +47,9 @@ public partial class MainWindow
         {
             if (i > 0)
                 RowDivider();
+            ImGui.PushID(i);
             DrawRow(Active.AboveGate[i], topRow: i == 0);
+            ImGui.PopID();
         }
 
         if (Active.BelowGate.Count > 0)
@@ -57,7 +65,8 @@ public partial class MainWindow
 
         fonts.Small11.Push();
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-        ImGui.TextUnformatted($"{result.Results.Count} RESULTS · {result.Elapsed.TotalSeconds:0.00}S");
+        ImGui.TextUnformatted(string.Create(CultureInfo.InvariantCulture,
+            $"{result.Results.Count} RESULTS · {result.Elapsed.TotalSeconds:0.00}S"));
         ImGui.PopStyleColor();
 
         foreach (var provider in result.ProviderDetail)
@@ -236,7 +245,7 @@ public partial class MainWindow
             ImGui.TextUnformatted(loc.ZoneName);
             ImGui.SameLine(0, Theme.Space3 * scale);
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-            ImGui.TextUnformatted($"{loc.MapX:0.0}, {loc.MapY:0.0}");
+            ImGui.TextUnformatted(Coords(loc.MapX, loc.MapY));
             ImGui.PopStyleColor();
             fonts.Body13.Pop();
 
@@ -324,7 +333,7 @@ public partial class MainWindow
             ImGui.TextUnformatted($"Starts: {start.ZoneName}");
             ImGui.SameLine(0, Theme.Space3 * scale);
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-            ImGui.TextUnformatted($"{start.MapX:0.0}, {start.MapY:0.0}");
+            ImGui.TextUnformatted(Coords(start.MapX, start.MapY));
             ImGui.PopStyleColor();
             fonts.Body13.Pop();
 
@@ -521,10 +530,13 @@ public partial class MainWindow
 
         if (Active.LowRelevanceOpen)
         {
-            foreach (var hit in Active.BelowGate)
+            for (var i = 0; i < Active.BelowGate.Count; i++)
             {
                 RowDivider();
-                DrawRow(hit, topRow: false);
+                // Offset past the above-gate IDs so the two lists never collide.
+                ImGui.PushID(1000 + i);
+                DrawRow(Active.BelowGate[i], topRow: false);
+                ImGui.PopID();
             }
         }
     }
@@ -734,7 +746,7 @@ public partial class MainWindow
                 {
                     ImGui.SameLine(0, Theme.Space3 * scale);
                     ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-                    ImGui.TextUnformatted($"{loc.ZoneName} {loc.MapX:0.0}, {loc.MapY:0.0}");
+                    ImGui.TextUnformatted($"{loc.ZoneName} {Coords(loc.MapX, loc.MapY)}");
                     ImGui.PopStyleColor();
                 }
 
@@ -793,7 +805,7 @@ public partial class MainWindow
                 {
                     ImGui.SameLine(0, Theme.Space3 * scale);
                     ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-                    ImGui.TextUnformatted($"{exchangeLoc.ZoneName} {exchangeLoc.MapX:0.0}, {exchangeLoc.MapY:0.0}");
+                    ImGui.TextUnformatted($"{exchangeLoc.ZoneName} {Coords(exchangeLoc.MapX, exchangeLoc.MapY)}");
                     ImGui.PopStyleColor();
                 }
 
@@ -838,7 +850,7 @@ public partial class MainWindow
                 {
                     ImGui.SameLine(0, Theme.Space3 * scale);
                     ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-                    ImGui.TextUnformatted($"{nodeLoc.ZoneName} {nodeLoc.MapX:0.0}, {nodeLoc.MapY:0.0}");
+                    ImGui.TextUnformatted($"{nodeLoc.ZoneName} {Coords(nodeLoc.MapX, nodeLoc.MapY)}");
                     ImGui.PopStyleColor();
                 }
 
@@ -928,16 +940,19 @@ public partial class MainWindow
         var viewWidth = FlagButtonWidth("View");
         var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag"));
 
-        foreach (var group in card.CutsceneAppearances.GroupBy(a => (a.ExpansionOrder, a.Expansion)))
+        if (!Active.SceneGroups.TryGetValue(RowKey(card), out var groups))
+            return;
+
+        foreach (var group in groups)
         {
-            var key = $"{npc.RowId}:{group.Key.ExpansionOrder}";
+            var key = $"{npc.RowId}:{group.Order}";
             var open = Active.ExpandedScenes.Contains(key);
             var caret = (open ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight).ToIconString();
-            var count = group.Count();
+            var count = group.Scenes.Count;
             var summary = count == 1 ? "1 appearance" : $"{count} appearances";
 
             fonts.Body13.Push();
-            if (Widgets.GhostButton($"{caret} {group.Key.Expansion} — {summary}##scenes{key}") &&
+            if (Widgets.GhostButton($"{caret} {group.Expansion} — {summary}##scenes{key}") &&
                 !Active.ExpandedScenes.Remove(key))
                 Active.ExpandedScenes.Add(key);
             fonts.Body13.Pop();
@@ -946,7 +961,7 @@ public partial class MainWindow
                 continue;
 
             var i = 0;
-            foreach (var appearance in group)
+            foreach (var appearance in group.Scenes)
             {
                 i++;
                 fonts.Body13.Push();
@@ -969,13 +984,13 @@ public partial class MainWindow
                 {
                     ImGui.SameLine();
                     ImGui.SetCursorPosX(RowRightEdge() - viewWidth - (Theme.Space2 * scale) - flagWidth);
-                    if (Widgets.FlagButton("Flag", $"sceneflag{npc.RowId}-{group.Key.ExpansionOrder}-{i}"))
+                    if (Widgets.FlagButton("Flag", $"sceneflag{npc.RowId}-{group.Order}-{i}"))
                         MapLinkOpener.Open(flagLoc);
                 }
 
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(RowRightEdge() - viewWidth);
-                if (Widgets.OutlinedButton($"View##scene{npc.RowId}-{group.Key.ExpansionOrder}-{i}"))
+                if (Widgets.OutlinedButton($"View##scene{npc.RowId}-{group.Order}-{i}"))
                     queuedNavigation = (appearance.Quest.Name, SearchCategory.Unlocks);
                 ImGui.PopStyleVar();
                 fonts.Citation12.Pop();

@@ -8,10 +8,12 @@ namespace Wikiway.Core.Caching;
 public sealed class FileCacheStore : ICacheStore
 {
     private readonly string directory;
+    private readonly Action<string>? log;
 
-    public FileCacheStore(string directory)
+    public FileCacheStore(string directory, Action<string>? log = null)
     {
         this.directory = directory;
+        this.log = log;
     }
 
     public async Task<CacheEntry?> GetAsync(string key, CancellationToken ct)
@@ -31,9 +33,10 @@ public sealed class FileCacheStore : ICacheStore
         {
             throw;
         }
-        catch
+        catch (Exception e)
         {
             // A corrupt or unreadable entry is just a miss.
+            log?.Invoke($"cache read failed for {path}: {e.Message}");
             return null;
         }
     }
@@ -50,9 +53,10 @@ public sealed class FileCacheStore : ICacheStore
         {
             throw;
         }
-        catch
+        catch (Exception e)
         {
             // Failing to cache never fails the request.
+            log?.Invoke($"cache write failed: {e.Message}");
         }
     }
 
@@ -66,11 +70,38 @@ public sealed class FileCacheStore : ICacheStore
                     File.Delete(file);
             }
         }
-        catch
+        catch (Exception e)
         {
+            log?.Invoke($"cache clear failed: {e.Message}");
         }
 
         return Task.CompletedTask;
+    }
+
+    // TTLs are only enforced on read, so without a sweep every distinct query
+    // leaves a file behind forever.
+    public void Sweep(TimeSpan maxAge, CancellationToken ct)
+    {
+        try
+        {
+            if (!Directory.Exists(directory))
+                return;
+
+            var cutoff = DateTime.UtcNow - maxAge;
+            foreach (var file in Directory.EnumerateFiles(directory, "*.json"))
+            {
+                ct.ThrowIfCancellationRequested();
+                if (File.GetLastWriteTimeUtc(file) < cutoff)
+                    File.Delete(file);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception e)
+        {
+            log?.Invoke($"cache sweep failed: {e.Message}");
+        }
     }
 
     private string PathFor(string key)

@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Wikiway.GameData;
+namespace Wikiway.Canary.Tests;
 
 public static class GameInstallLocator
 {

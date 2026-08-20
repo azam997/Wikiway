@@ -64,5 +64,6 @@ internal static class Theme
         alpha);
 
     private static uint Pack(Vector4 c) =>
-        ((uint)(c.W * 255) << 24) | ((uint)(c.Z * 255) << 16) | ((uint)(c.Y * 255) << 8) | (uint)(c.X * 255);
+        ((uint)((c.W * 255) + 0.5f) << 24) | ((uint)((c.Z * 255) + 0.5f) << 16) |
+        ((uint)((c.Y * 255) + 0.5f) << 8) | (uint)((c.X * 255) + 0.5f);
 }

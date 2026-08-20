@@ -55,4 +55,18 @@ public class FileCacheStoreTests : IDisposable
         Assert.Null(await store.GetAsync("a", CancellationToken.None));
         Assert.Null(await store.GetAsync("b", CancellationToken.None));
     }
+
+    [Fact]
+    public async Task SweepDeletesOnlyFilesOlderThanMaxAge()
+    {
+        await store.SetAsync("old", "1", CancellationToken.None);
+        var oldFile = Assert.Single(Directory.EnumerateFiles(dir));
+        await store.SetAsync("fresh", "2", CancellationToken.None);
+        File.SetLastWriteTimeUtc(oldFile, DateTime.UtcNow - TimeSpan.FromDays(30));
+
+        store.Sweep(TimeSpan.FromDays(7), CancellationToken.None);
+
+        Assert.Null(await store.GetAsync("old", CancellationToken.None));
+        Assert.NotNull(await store.GetAsync("fresh", CancellationToken.None));
+    }
 }

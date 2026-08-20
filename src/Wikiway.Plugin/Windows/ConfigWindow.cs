@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
@@ -34,10 +35,11 @@ public class ConfigWindow : Window
         var maxResults = config.MaxWikiResults;
         ImGui.SetNextItemWidth(120 * ImGuiHelpers.GlobalScale);
         if (ImGui.SliderInt("Max wiki results", ref maxResults, 1, 10))
-        {
             config.MaxWikiResults = maxResults;
+        // SliderInt reports a change on every dragged frame; write the file
+        // once on release instead.
+        if (ImGui.IsItemDeactivatedAfterEdit())
             config.Save();
-        }
 
         var contextMenu = config.ContextMenuEnabled;
         if (ImGui.Checkbox("Add \"Look up on Wikiway\" to right-click menus", ref contextMenu))
@@ -111,7 +113,18 @@ public class ConfigWindow : Window
 
         ImGui.Separator();
         if (ImGui.Button("Clear wiki cache"))
-            _ = Task.Run(() => plugin.CacheStore.ClearAsync(CancellationToken.None));
+        {
+            _ = Task.Run(async () =>
+            {
+                await plugin.CacheStore.ClearAsync(CancellationToken.None).ConfigureAwait(false);
+                Plugin.NotificationManager.AddNotification(new Notification
+                {
+                    Title = "Wikiway",
+                    Content = "Wiki cache cleared.",
+                    Type = NotificationType.Success,
+                });
+            });
+        }
 
         ImGui.SameLine();
         if (ImGui.Button("Show tutorial"))

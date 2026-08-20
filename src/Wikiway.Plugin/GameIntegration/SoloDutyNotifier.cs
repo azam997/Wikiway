@@ -11,6 +11,7 @@ internal sealed class SoloDutyNotifier : IDisposable
     private readonly MainWindow mainWindow;
     private readonly IGameDataStore store;
     private readonly Configuration config;
+    private IActiveNotification? activeNotification;
 
     public SoloDutyNotifier(MainWindow mainWindow, IGameDataStore store, Configuration config)
     {
@@ -20,7 +21,12 @@ internal sealed class SoloDutyNotifier : IDisposable
         Plugin.ClientState.TerritoryChanged += OnTerritoryChanged;
     }
 
-    public void Dispose() => Plugin.ClientState.TerritoryChanged -= OnTerritoryChanged;
+    public void Dispose()
+    {
+        Plugin.ClientState.TerritoryChanged -= OnTerritoryChanged;
+        // A toast outliving the plugin would click into a disposed window.
+        activeNotification?.DismissNow();
+    }
 
     // Fires at zone-in, before the commence dialog - unlike IDutyState.DutyStarted,
     // which only fires once the barrier drops.
@@ -29,23 +35,23 @@ internal sealed class SoloDutyNotifier : IDisposable
         if (!config.SoloDutyToastEnabled)
             return;
 
-        var duty = store.FindDutyByTerritory(territoryId);
-        if (duty is not { Solo: true })
+        if (store.FindSoloDutyName(territoryId) is not { } dutyName)
             return;
 
         var notification = Plugin.NotificationManager.AddNotification(new Notification
         {
             Title = "Wikiway",
-            Content = $"{duty.Name} — click to look this duty up.",
+            Content = $"{dutyName} — click to look this duty up.",
             Type = NotificationType.Info,
             InitialDuration = TimeSpan.FromSeconds(10),
         });
 
         notification.Click += args =>
         {
-            mainWindow.SubmitQuery(duty.Name, SearchCategory.Other);
+            mainWindow.SubmitQuery(dutyName, SearchCategory.Other);
             mainWindow.IsOpen = true;
             args.Notification.DismissNow();
         };
+        activeNotification = notification;
     }
 }

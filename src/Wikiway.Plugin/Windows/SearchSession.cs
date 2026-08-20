@@ -14,6 +14,7 @@ internal sealed class SearchSession : IDisposable
     public readonly HashSet<string> ExpandedRows = [];
     public readonly HashSet<(uint QuestRowId, int ChainIndex)> ExpandedChains = [];
     public readonly HashSet<string> ExpandedScenes = [];
+    public readonly Dictionary<string, List<SceneGroup>> SceneGroups = [];
     public bool LowRelevanceOpen;
     public bool HasGameResult;
     public CancellationTokenSource? Cts;
@@ -22,6 +23,7 @@ internal sealed class SearchSession : IDisposable
     public string? Error;
     public float ScrollY;
     public float? PendingScroll;
+    public int PendingScrollFrames;
 
     public void Dispose()
     {
@@ -29,3 +31,5 @@ internal sealed class SearchSession : IDisposable
         Cts?.Dispose();
     }
 }
+
+internal sealed record SceneGroup(int Order, string Expansion, List<CutsceneAppearance> Scenes);

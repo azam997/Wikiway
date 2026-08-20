@@ -76,6 +76,22 @@ public class QuestChainWalkerTests
     }
 
     [Fact]
+    public void TwoMsqPrerequisitesOnTheSamePatchEmitOneGateOnlyChain()
+    {
+        var quests = Chain(
+            Quest(1, "Origin", 80, Link(2, "Msq A"), Link(3, "Msq B")),
+            Quest(2, "Msq A", 80) with { MainScenario = true, Expansion = "6.x" },
+            Quest(3, "Msq B", 80) with { MainScenario = true, Expansion = "6.x" });
+
+        var (chains, msq) = QuestChainWalker.Walk(quests[1u], id => quests.GetValueOrDefault(id));
+
+        Assert.Equal("6.x", msq);
+        var chain = Assert.Single(chains);
+        Assert.Empty(chain.Steps);
+        Assert.Equal("6.x", chain.Gate?.Version);
+    }
+
+    [Fact]
     public void OriginForkWithMsqAppendsTheGateOnlyChainLast()
     {
         var quests = Chain(

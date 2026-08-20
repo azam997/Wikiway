@@ -1,7 +1,6 @@
 # Code style notes (internal)
 
-The Dalamud community is wary of AI-generated plugins, and comment style is the
-biggest tell. These rules come from reading real plugin sources (SamplePlugin,
+These rules come from reading real plugin sources (SamplePlugin,
 Caraxi/SimpleTweaksPlugin, Ottermandias/GatherBuddy, MidoriKami/DailyDuty) —
 measured comment density in shipped community plugins is ~0–1 comments per 100
 lines. Explanatory writing belongs here in `docs/`, not in the code.
@@ -12,7 +11,7 @@ lines. Explanatory writing belongs here in `docs/`, not in the code.
    Dalamud/C#, no comment.
 2. When commenting, explain **why** or a **game-client quirk** (sheet layout
    oddities, polling behavior, workarounds). Never narrate what the next line
-   does ("// Create the window" is the classic template/AI tell).
+   does ("// Create the window" says nothing the code doesn't).
 3. No `///` XML doc comments anywhere — none of the surveyed plugins use them,
    even on public API. No file headers, no author/license banners.
 4. No `#region`. `#if DEBUG` is fine.

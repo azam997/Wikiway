@@ -46,7 +46,7 @@ public class LocalGameDataProviderTests
 
     private sealed class StubStore(params GameEntity[] entities) : IGameDataStore
     {
-        public IReadOnlyList<NameIndexEntry> GetAllNames() =>
+        public IReadOnlyList<NameIndexEntry> GetAllNames(CancellationToken ct = default) =>
             entities.Select(e => new NameIndexEntry(KindOf(e), e.RowId, e.Name.ToLowerInvariant())).ToList();
 
         public NpcEntity? GetNpc(uint rowId) => Find<NpcEntity>(rowId);
@@ -57,6 +57,9 @@ public class LocalGameDataProviderTests
         public MinionEntity? GetMinion(uint rowId) => null;
         public AchievementEntity? GetAchievement(uint rowId) => null;
         public DutyEntity? FindDutyByTerritory(uint territoryTypeId) => null;
+        public string? GetItemName(uint rowId) => Find<ItemEntity>(rowId)?.Name;
+        public string? GetNpcName(uint rowId) => Find<NpcEntity>(rowId)?.Name;
+        public string? FindSoloDutyName(uint territoryTypeId) => null;
 
         private T? Find<T>(uint rowId) where T : GameEntity =>
             entities.OfType<T>().FirstOrDefault(e => e.RowId == rowId);
