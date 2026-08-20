@@ -68,12 +68,12 @@ public class WikiClientTests
     }
 
     [Fact]
-    public async Task LeadSectionUnwrapsTheStarProperty()
+    public async Task SectionHtmlUnwrapsTheStarProperty()
     {
         var handler = new CannedHandler("""{"parse": {"title": "X", "text": {"*": "<p>lead</p>"}}}""");
         var client = new ConsoleGamesWikiClient(new HttpClient(handler));
 
-        var html = await client.GetLeadSectionHtmlAsync("X", CancellationToken.None);
+        var html = await client.GetSectionHtmlAsync("X", 0, CancellationToken.None);
 
         Assert.Equal("<p>lead</p>", html);
     }

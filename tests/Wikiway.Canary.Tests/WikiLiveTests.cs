@@ -36,16 +36,6 @@ public class WikiLiveTests : IDisposable
     }
 
     [Fact]
-    public async Task LeadSectionOfKnownPageIsNonEmptyHtml()
-    {
-        var html = await Live(() => client.GetLeadSectionHtmlAsync("Aether Currents", CancellationToken.None));
-
-        Assert.NotNull(html);
-        Assert.Contains("<", html);
-        Assert.True(html.Length > 100, "lead section suspiciously short");
-    }
-
-    [Fact]
     public async Task GibberishSearchIsEmptyNotAnError()
     {
         var hits = await Live(() => client.SearchAsync("xqzzqxplzzt", 5, CancellationToken.None));

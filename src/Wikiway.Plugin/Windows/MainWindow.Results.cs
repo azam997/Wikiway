@@ -378,7 +378,6 @@ public partial class MainWindow
 
     private void DrawWikiPageRow(WikiPageResult wiki)
     {
-        var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
         RowTitle(wiki.Title);
@@ -387,28 +386,11 @@ public partial class MainWindow
         if (HeaderAction("Open", $"wiki{wiki.Title}"))
             BrowserOpener.Open(wiki.PageUrl);
 
-        if (wiki.Lead != null)
-        {
-            fonts.Body13.Push();
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
-            ImGui.TextWrapped(wiki.Lead);
-            ImGui.PopStyleColor();
-            fonts.Body13.Pop();
-        }
-        else if (wiki.Snippet != null)
-        {
-            fonts.Tag10.Push();
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-            ImGui.TextUnformatted("SNIPPET");
-            ImGui.PopStyleColor();
-            fonts.Tag10.Pop();
-            ImGui.SameLine(0, Theme.Space3 * scale);
-            fonts.Body13.Push();
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
-            ImGui.TextWrapped(wiki.Snippet);
-            ImGui.PopStyleColor();
-            fonts.Body13.Pop();
-        }
+        fonts.Body13.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+        ImGui.TextUnformatted("Wiki page found");
+        ImGui.PopStyleColor();
+        fonts.Body13.Pop();
     }
 
     private void DrawWikiSectionsRow(WikiSectionsResult wiki)

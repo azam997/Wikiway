@@ -32,10 +32,6 @@ public sealed record EntityCardResult : SearchResult
 public sealed record WikiPageResult : SearchResult
 {
     public required Uri PageUrl { get; init; }
-
-    public string? Snippet { get; init; }
-
-    public string? Lead { get; init; }
 }
 
 public sealed record WikiSectionText(string Heading, string Text);

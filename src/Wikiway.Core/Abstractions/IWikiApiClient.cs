@@ -6,8 +6,6 @@ public interface IWikiApiClient
 
     Task<IReadOnlyList<WikiSearchHit>> SearchAsync(string term, int limit, CancellationToken ct);
 
-    Task<string?> GetLeadSectionHtmlAsync(string pageTitle, CancellationToken ct);
-
     Task<string?> GetPagePlainTextAsync(string pageTitle, CancellationToken ct);
 
     Task<IReadOnlyList<WikiSection>> GetSectionsAsync(string pageTitle, CancellationToken ct);

@@ -24,24 +24,8 @@ public class WikiProviderTests
 
         var first = Assert.IsType<WikiPageResult>(result.Results[0]);
         Assert.Equal("First", first.Title);
-        Assert.Equal("about first", first.Snippet);
         Assert.True(first.Score > result.Results[1].Score);
         Assert.Contains("consolegameswiki.com/wiki/First", first.PageUrl.ToString());
-    }
-
-    [Fact]
-    public async Task TopHitGetsALeadParagraph()
-    {
-        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
-            new WikiSearchHit("First", 1, ""),
-            new WikiSearchHit("Second", 2, "")));
-
-        var result = await provider.SearchAsync(Query("first"), CancellationToken.None);
-
-        var first = Assert.IsType<WikiPageResult>(result.Results[0]);
-        var second = Assert.IsType<WikiPageResult>(result.Results[1]);
-        Assert.Equal("lead of First", first.Lead);
-        Assert.Null(second.Lead);
     }
 
     [Fact]
@@ -62,7 +46,7 @@ public class WikiProviderTests
     }
 
     [Fact]
-    public async Task NoMatchingSectionsFallsBackToLead()
+    public async Task NoMatchingSectionsLeavesThePlainPageResult()
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(new WikiSearchHit("Iron Ingot", 1, ""))
         {
@@ -71,8 +55,8 @@ public class WikiProviderTests
 
         var result = await provider.SearchAsync(Query("iron ingot", SearchCategory.Items), CancellationToken.None);
 
-        var first = Assert.IsType<WikiPageResult>(result.Results[0]);
-        Assert.Equal("lead of Iron Ingot", first.Lead);
+        var first = Assert.IsType<WikiPageResult>(Assert.Single(result.Results));
+        Assert.Equal("Iron Ingot", first.Title);
     }
 
     [Fact]
@@ -88,7 +72,7 @@ public class WikiProviderTests
     }
 
     [Fact]
-    public async Task RedirectSnippetIsDroppedAndDemoted()
+    public async Task RedirectSnippetDemotesTheHit()
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
             new WikiSearchHit("Momodi Modi", 1, "#REDIRECT [[Momodi]]")));
@@ -96,27 +80,11 @@ public class WikiProviderTests
         var result = await provider.SearchAsync(Query("momodi"), CancellationToken.None);
 
         var hit = Assert.IsType<WikiPageResult>(result.Results[0]);
-        Assert.Null(hit.Snippet);
         Assert.True(hit.Score <= 0.1);
     }
 
     [Fact]
-    public async Task MarkupDominatedLeadIsSkippedAndDemoted()
-    {
-        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(new WikiSearchHit("Momodi", 1, "prose snippet"))
-        {
-            LeadHtml = "<style>.infobox{float:right}</style>{{npcbox|name=Momodi}}",
-        });
-
-        var result = await provider.SearchAsync(Query("momodi"), CancellationToken.None);
-
-        var hit = Assert.IsType<WikiPageResult>(result.Results[0]);
-        Assert.Null(hit.Lead);
-        Assert.True(hit.Score <= 0.1);
-    }
-
-    [Fact]
-    public async Task InfoboxSourceSnippetIsDroppedAndDemoted()
+    public async Task InfoboxSourceSnippetDemotesTheHit()
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
             new WikiSearchHit("Momodi", 1, "| name = Momodi\n| full-name = Momodi Modi")));
@@ -124,7 +92,6 @@ public class WikiProviderTests
         var result = await provider.SearchAsync(Query("momodi"), CancellationToken.None);
 
         var hit = Assert.IsType<WikiPageResult>(result.Results[0]);
-        Assert.Null(hit.Snippet);
         Assert.True(hit.Score <= 0.1);
     }
 
@@ -167,16 +134,11 @@ public class WikiProviderTests
     {
         public IReadOnlyList<WikiSection> Sections { get; init; } = [];
 
-        public string? LeadHtml { get; init; }
-
         public Uri PageUrl(string title) =>
             new("https://ffxiv.consolegameswiki.com/wiki/" + title.Replace(' ', '_'));
 
         public Task<IReadOnlyList<WikiSearchHit>> SearchAsync(string term, int limit, CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<WikiSearchHit>>(hits);
-
-        public Task<string?> GetLeadSectionHtmlAsync(string pageTitle, CancellationToken ct) =>
-            Task.FromResult<string?>(LeadHtml ?? $"<p>lead of {pageTitle}</p>");
 
         public Task<string?> GetPagePlainTextAsync(string pageTitle, CancellationToken ct) =>
             Task.FromResult<string?>($"plain text of {pageTitle}");

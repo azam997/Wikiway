@@ -43,9 +43,6 @@ public sealed class ConsoleGamesWikiClient : IWikiApiClient
         return hits;
     }
 
-    public Task<string?> GetLeadSectionHtmlAsync(string pageTitle, CancellationToken ct) =>
-        GetSectionHtmlAsync(pageTitle, 0, ct);
-
     public async Task<string?> GetSectionHtmlAsync(string pageTitle, int sectionIndex, CancellationToken ct)
     {
         var url = $"{ApiBase}?action=parse&page={Uri.EscapeDataString(pageTitle)}&prop=text&section={sectionIndex}&redirects=1&format=json";
