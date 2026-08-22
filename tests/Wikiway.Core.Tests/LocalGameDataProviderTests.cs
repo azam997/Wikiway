@@ -44,6 +44,21 @@ public class LocalGameDataProviderTests
         Assert.DoesNotContain(entities, e => e is NpcEntity);
     }
 
+    [Fact]
+    public async Task WideMatchesCapAtTheRunawayBound()
+    {
+        var npcs = Enumerable.Range(1, 510)
+            .Select(i => (GameEntity)new NpcEntity((uint)i, $"Cosmic Wanderer {i:000}", null))
+            .ToArray();
+        var store = new StubStore(npcs);
+
+        var provider = new LocalGameDataProvider(store);
+        var result = await provider.SearchAsync(
+            new NormalizedQuery("cosmic", "cosmic", QueryIntent.Unknown), CancellationToken.None);
+
+        Assert.Equal(500, result.Results.Count);
+    }
+
     private sealed class StubStore(params GameEntity[] entities) : IGameDataStore
     {
         public IReadOnlyList<NameIndexEntry> GetAllNames(CancellationToken ct = default) =>

@@ -18,6 +18,10 @@ public partial class MainWindow
 {
     private const int MaxVendorLines = 6;
 
+    // Matches the old provider cap, so the default view stays the same size
+    // and the clipper-less list only grows when the user asks for the rest.
+    private const int InitialRows = 8;
+
     // The game renders coordinates with a period on every client language;
     // CurrentCulture would show "11,7" on some.
     private static string Coords(float x, float y) =>
@@ -43,7 +47,8 @@ public partial class MainWindow
         DrawCountStrip(result);
         ImGui.Spacing();
 
-        for (var i = 0; i < Active.AboveGate.Count; i++)
+        var shown = Math.Min(InitialRows, Active.AboveGate.Count);
+        for (var i = 0; i < shown; i++)
         {
             if (i > 0)
                 RowDivider();
@@ -51,6 +56,9 @@ public partial class MainWindow
             DrawRow(Active.AboveGate[i], topRow: i == 0);
             ImGui.PopID();
         }
+
+        if (Active.AboveGate.Count > InitialRows)
+            DrawMoreStrip();
 
         if (Active.BelowGate.Count > 0)
             DrawLowRelevanceStrip();
@@ -502,7 +510,7 @@ public partial class MainWindow
         }
     }
 
-    private void DrawLowRelevanceStrip()
+    private bool ToggleStrip(string id, string label, bool open)
     {
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
@@ -510,8 +518,7 @@ public partial class MainWindow
 
         ImGui.Spacing();
         var height = 26f * scale;
-        if (ImGui.InvisibleButton("##wikiway-lowrelevance", new Vector2(ImGui.GetContentRegionAvail().X, height)))
-            Active.LowRelevanceOpen = !Active.LowRelevanceOpen;
+        var clicked = ImGui.InvisibleButton(id, new Vector2(ImGui.GetContentRegionAvail().X, height));
 
         var min = ImGui.GetItemRectMin();
         var max = ImGui.GetItemRectMax();
@@ -519,14 +526,41 @@ public partial class MainWindow
             Theme.RadiusMd * scale);
 
         fonts.Small11.Push();
-        var caret = (Active.LowRelevanceOpen ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight).ToIconString();
+        var caret = (open ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight).ToIconString();
         var lineHeight = ImGui.GetTextLineHeight();
         var textY = min.Y + ((height - lineHeight) * 0.5f);
         var x = min.X + (Theme.Space4 * scale);
         dl.AddText(new Vector2(x, textY), Theme.Neutral500U, caret);
         x += ImGui.CalcTextSize(caret).X + (Theme.Space3 * scale);
-        dl.AddText(new Vector2(x, textY), Theme.Neutral400U, $"{Active.BelowGate.Count} LOW CONFIDENCE RESULTS");
+        dl.AddText(new Vector2(x, textY), Theme.Neutral400U, label);
         fonts.Small11.Pop();
+
+        return clicked;
+    }
+
+    private void DrawMoreStrip()
+    {
+        var hidden = Active.AboveGate.Count - InitialRows;
+        if (ToggleStrip("##wikiway-more", $"{hidden} MORE RESULTS", Active.MoreOpen))
+            Active.MoreOpen = !Active.MoreOpen;
+
+        if (Active.MoreOpen)
+        {
+            for (var i = InitialRows; i < Active.AboveGate.Count; i++)
+            {
+                RowDivider();
+                ImGui.PushID(i);
+                DrawRow(Active.AboveGate[i], topRow: false);
+                ImGui.PopID();
+            }
+        }
+    }
+
+    private void DrawLowRelevanceStrip()
+    {
+        if (ToggleStrip("##wikiway-lowrelevance", $"{Active.BelowGate.Count} LOW CONFIDENCE RESULTS",
+                Active.LowRelevanceOpen))
+            Active.LowRelevanceOpen = !Active.LowRelevanceOpen;
 
         if (Active.LowRelevanceOpen)
         {

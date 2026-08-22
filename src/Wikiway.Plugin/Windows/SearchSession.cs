@@ -16,6 +16,7 @@ internal sealed class SearchSession : IDisposable
     public readonly HashSet<string> ExpandedScenes = [];
     public readonly Dictionary<string, List<SceneGroup>> SceneGroups = [];
     public bool LowRelevanceOpen;
+    public bool MoreOpen;
     public bool HasGameResult;
     public CancellationTokenSource? Cts;
     public Task<QueryResponse>? Pending;

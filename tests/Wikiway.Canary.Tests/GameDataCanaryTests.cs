@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
 using Wikiway.Core.Pipeline;
+using Wikiway.Core.Providers;
 using Xunit;
 
 namespace Wikiway.Canary.Tests;
@@ -614,6 +615,23 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         var dungeon = cfc.First(r =>
             !r.Name.IsEmpty && r.Name.ExtractText().Contains("Sastasha", StringComparison.OrdinalIgnoreCase));
         Assert.Null(store.FindSoloDutyName(dungeon.TerritoryType.RowId));
+    }
+
+    // The "cosmic" family is ~230 items at 7.x, all landing in one score
+    // tier where ties break shortest-name-first - a cap below the family
+    // size silently starves its long-named members (Operator's attire).
+    [Fact]
+    public async Task CosmicItemFamilyComesBackWhole()
+    {
+        var provider = new LocalGameDataProvider(fixture.Store());
+
+        var result = await provider.SearchAsync(
+            new NormalizedQuery("cosmic", "cosmic", QueryIntent.Unknown, SearchCategory.Items),
+            CancellationToken.None);
+
+        Assert.True(result.Results.Count > 150, $"only {result.Results.Count} cosmic items came back");
+        Assert.Contains(result.Results,
+            r => r.Title.Equals("Cosmic Operator's Attire", StringComparison.OrdinalIgnoreCase));
     }
 
     private static int Count(IReadOnlyList<NameIndexEntry> names, EntityKind kind) =>

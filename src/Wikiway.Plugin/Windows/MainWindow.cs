@@ -351,7 +351,6 @@ public partial class MainWindow : Window, IDisposable
         fonts.Citation12.Push();
         ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
         var label = $"{FontAwesomeIcon.Scroll.ToIconString()} Active quests";
-        ImGui.SetCursorPosX(RowRightEdge() - ImGui.CalcTextSize(label).X - (Theme.Space4 * 2f * scale));
         if (Widgets.OutlinedButton($"{label}##wikiway-questpick-btn"))
         {
             activeQuests = ActiveQuestReader.Read();
@@ -485,6 +484,7 @@ public partial class MainWindow : Window, IDisposable
                     (hit.Score < ScoreGate ? session.BelowGate : session.AboveGate).Add(hit);
                 session.HasGameResult = session.AboveGate.Exists(hit => hit is EntityCardResult);
                 session.LowRelevanceOpen = false;
+                session.MoreOpen = false;
                 session.ExpandedRows.Clear();
                 session.ExpandedChains.Clear();
                 session.ExpandedScenes.Clear();

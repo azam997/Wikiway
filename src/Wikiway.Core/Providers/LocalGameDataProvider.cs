@@ -9,6 +9,11 @@ public sealed class LocalGameDataProvider : ISearchProvider
 {
     public const string ProviderId = "local-gamedata";
 
+    // A runaway bound, not a page size: real name families ("cosmic ..." is
+    // ~230 items at 7.x) must come back whole, because the ranker's
+    // shortest-name tie-break otherwise starves the long-named members.
+    private const int MaxResults = 500;
+
     private static readonly Citation GameDataSource = new("Game data");
 
     private readonly IGameDataStore store;
@@ -37,7 +42,7 @@ public sealed class LocalGameDataProvider : ISearchProvider
         var index = await indexTask.WaitAsync(ct).ConfigureAwait(false);
 
         var results = new List<SearchResult>();
-        foreach (var match in index.Search(query.Term, kinds: KindFilter(query.Category)))
+        foreach (var match in index.Search(query.Term, MaxResults, KindFilter(query.Category)))
         {
             ct.ThrowIfCancellationRequested();
 
