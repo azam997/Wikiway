@@ -1,0 +1,33 @@
+﻿[
+    {
+        "Author":  "azam997",
+        "Name":  "Wikiway",
+        "InternalName":  "Wikiway",
+        "AssemblyVersion":  "1.0.0.0",
+        "Description":  "Answers lookup questions from local game data first and ffxiv.consolegameswiki.com second. Type /wikiway followed by a question or a name, e.g. /wikiway where is momodi.",
+        "ApplicableVersion":  "any",
+        "RepoUrl":  "https://github.com/azam997/Wikiway",
+        "Tags":  [
+                     "wiki",
+                     "search",
+                     "lookup",
+                     "quest",
+                     "npc",
+                     "item"
+                 ],
+        "DalamudApiLevel":  15,
+        "LoadRequiredState":  0,
+        "LoadSync":  false,
+        "CanUnloadAsync":  false,
+        "LoadPriority":  0,
+        "Punchline":  "Ask about NPCs, quests, items and more without leaving the game.",
+        "AcceptsFeedback":  true,
+        "DownloadLinkInstall":  "https://github.com/azam997/Wikiway/releases/latest/download/latest.zip",
+        "DownloadLinkTesting":  "https://github.com/azam997/Wikiway/releases/latest/download/latest.zip",
+        "DownloadLinkUpdate":  "https://github.com/azam997/Wikiway/releases/latest/download/latest.zip",
+        "IsHide":  false,
+        "IsTestingExclusive":  false,
+        "TestingAssemblyVersion":  "1.0.0.0",
+        "LastUpdate":  1787498280
+    }
+]
