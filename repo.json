@@ -3,7 +3,7 @@
         "Author":  "azam997",
         "Name":  "Wikiway",
         "InternalName":  "Wikiway",
-        "AssemblyVersion":  "1.0.0.0",
+        "AssemblyVersion":  "1.0.0.1",
         "Description":  "Answers lookup questions from local game data first and ffxiv.consolegameswiki.com second. Type /wikiway followed by a question or a name, e.g. /wikiway where is momodi.",
         "ApplicableVersion":  "any",
         "RepoUrl":  "https://github.com/azam997/Wikiway",
@@ -27,7 +27,7 @@
         "DownloadLinkUpdate":  "https://github.com/azam997/Wikiway/releases/latest/download/latest.zip",
         "IsHide":  false,
         "IsTestingExclusive":  false,
-        "TestingAssemblyVersion":  "1.0.0.0",
-        "LastUpdate":  1787498307
+        "TestingAssemblyVersion":  "1.0.0.1",
+        "LastUpdate":  1787509351
     }
 ]
