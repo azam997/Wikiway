@@ -40,8 +40,8 @@ if (-not $?)
 }
 
 $tag = "v$ver"
-gh release view $tag 2>$null | Out-Null
-if ($?)
+$existingTags = gh release list --json tagName --jq '.[].tagName'
+if ($existingTags -contains $tag)
 {
     gh release upload $tag (Join-Path $outDir 'latest.zip') --clobber
 }
