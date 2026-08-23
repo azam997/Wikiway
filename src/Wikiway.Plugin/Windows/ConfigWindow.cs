@@ -86,6 +86,18 @@ public class ConfigWindow : Window
             "Adds a Cutscene Appearances tab on expanded NPC cards, grouped by expansion, " +
             "hidden if the user has not progressed past that point in MSQ.");
 
+        var pinCap = config.CapNpcLocationPins;
+        if (ImGui.Checkbox("Cap location lists on NPC results", ref pinCap))
+        {
+            config.CapNpcLocationPins = pinCap;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "NPC results list at most 6 map pins; a summary line counts the rest. " +
+            "Turn off to always list every location.");
+
         var spoilers = config.SpoilerProtectionEnabled;
         if (ImGui.Checkbox("Hide spoilers past your MSQ progress", ref spoilers))
         {

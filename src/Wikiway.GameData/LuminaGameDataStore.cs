@@ -141,7 +141,9 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
     public string? FindSoloDutyName(uint territoryTypeId)
     {
-        if (!DutyTerritoryLookup().TryGetValue(territoryTypeId, out var rowId))
+        // Game-thread callback (TerritoryChanged): never build or wait on the
+        // lazy lookup here. Before WarmAll has built it, skip the toast.
+        if (dutyByTerritory is not { } lookup || !lookup.TryGetValue(territoryTypeId, out var rowId))
             return null;
 
         var row = Sheet<ContentFinderCondition>().GetRowOrDefault(rowId);

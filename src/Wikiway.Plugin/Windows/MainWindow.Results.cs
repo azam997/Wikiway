@@ -17,6 +17,7 @@ namespace Wikiway.Plugin.Windows;
 public partial class MainWindow
 {
     private const int MaxVendorLines = 6;
+    private const int MaxNpcLocationLines = 6;
 
     // Matches the old provider cap, so the default view stays the same size
     // and the clipper-less list only grows when the user asks for the rest.
@@ -242,7 +243,11 @@ public partial class MainWindow
         var fonts = plugin.Fonts;
 
         var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag map"));
-        for (var i = 0; i < locations.Count; i++)
+        var shown = locations.Count;
+        if (plugin.Configuration.CapNpcLocationPins && locations.Count > MaxNpcLocationLines)
+            shown = MaxNpcLocationLines;
+
+        for (var i = 0; i < shown; i++)
         {
             var loc = locations[i];
             fonts.Body13.Push();
@@ -264,6 +269,15 @@ public partial class MainWindow
             if (Widgets.FlagButton("Flag map", $"flag{npcRowId}-{i}"))
                 MapLinkOpener.Open(loc);
             ImGui.PopStyleVar();
+            fonts.Citation12.Pop();
+        }
+
+        if (shown < locations.Count)
+        {
+            fonts.Citation12.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+            ImGui.TextUnformatted($"+{locations.Count - shown} more locations");
+            ImGui.PopStyleColor();
             fonts.Citation12.Pop();
         }
 

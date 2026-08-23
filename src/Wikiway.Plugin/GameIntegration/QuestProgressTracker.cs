@@ -16,6 +16,7 @@ internal sealed unsafe class QuestProgressTracker
     // stale check would never fire until the first forced Refresh.
     private long lastRefresh = -StaleMs;
     private List<uint>? questRowIds;
+    private bool warnedUnresolved;
 
     public bool IsAvailable => snapshot != null;
 
@@ -29,6 +30,25 @@ internal sealed unsafe class QuestProgressTracker
     public void Refresh()
     {
         lastRefresh = Environment.TickCount64;
+
+        // IsQuestComplete below is a [MemberFunction] native call through a
+        // generated pointer with no null guard of its own: if the signature
+        // stops resolving after a game patch, calling it is a jump to address
+        // 0 - an uncatchable client crash. A null snapshot fails gating open.
+        if (QuestManager.Addresses.IsQuestComplete.Value == IntPtr.Zero)
+        {
+            if (!warnedUnresolved)
+            {
+                warnedUnresolved = true;
+                Plugin.Log.Warning(
+                    "QuestManager.IsQuestComplete signature did not resolve on this game build; " +
+                    "quest progress (spoiler gating, chain checkmarks) is disabled until the plugin is updated.");
+            }
+
+            snapshot = null;
+            return;
+        }
+
         var manager = QuestManager.Instance();
         if (!Plugin.ClientState.IsLoggedIn || manager == null)
         {

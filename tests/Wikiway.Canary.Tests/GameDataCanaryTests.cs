@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Wikiway.Core.Abstractions;
+using Wikiway.GameData;
 using Wikiway.Core.Models;
 using Wikiway.Core.Pipeline;
 using Wikiway.Core.Providers;
@@ -382,6 +383,53 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.Contains(card.CutsceneAppearances, a => a.Location != null);
     }
 
+    // Pins the story-NPC pin wipe: Y'shtola leaves a placement per MSQ stage
+    // (probed 2026-08-23: 415 rows, 136 with 2+ handlers across 56 zones) and
+    // no handler pattern marks the current one, so the card must show no pins
+    // at all - the wiki result answers "where is she", and her single-quest
+    // copies still surface as gated cutscene appearances.
+    [Fact]
+    public void YshtolaCollapsesToASingleCardWithNoPins()
+    {
+        var card = CollapseNpc("y'shtola");
+
+        Assert.True(card.MergedCount > 100, $"expected 100+ y'shtola copies, got {card.MergedCount}");
+        Assert.Empty(card.MergedLocations);
+        Assert.True(card.MergedHidden > 100, "expected the stage placements to be hidden");
+        Assert.NotEmpty(card.CutsceneAppearances);
+    }
+
+    [Fact]
+    public void RaubahnCollapsesToASingleCardWithNoPins()
+    {
+        var card = CollapseNpc("raubahn");
+
+        Assert.InRange(card.MergedCount, 20, 300);
+        Assert.Empty(card.MergedLocations);
+        Assert.NotEmpty(card.CutsceneAppearances);
+    }
+
+    private EntityCardResult CollapseNpc(string name)
+    {
+        var store = fixture.Store();
+
+        var cards = store.GetAllNames()
+            .Where(n => n.Kind == EntityKind.Npc && n.Name == name)
+            .Select(n => store.GetNpc(n.RowId))
+            .Where(n => n != null)
+            .Select(SearchResult (n) => new EntityCardResult
+            {
+                Title = n!.Name,
+                Source = new Citation("Game data"),
+                Entity = n,
+                Score = 1.0,
+            })
+            .ToList();
+
+        Assert.True(cards.Count > 1, $"expected multiple {name} copies in ENpcResident");
+        return Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(cards)));
+    }
+
     [Fact]
     public void UltimateWeaponQuestHasResolvablePrerequisites()
     {
@@ -585,14 +633,18 @@ public class GameDataCanaryTests(GameDataFixture fixture)
     }
 
     // The light territory path used at zone-in re-implements solo detection
-    // without the unlock-chain resolution; the two must never disagree.
+    // without the unlock-chain resolution; the two must never disagree. It
+    // also must not build the lookup itself (game-thread callback) - cold it
+    // returns null, so warm the store first the way Plugin's WarmAll task does.
     [Fact]
     public void SoloDutyTerritoryPathAgreesWithFullResolution()
     {
         var store = fixture.Store();
+        store.WarmAll(CancellationToken.None);
         var cfc = fixture.GameData!.GetExcelSheet<Lumina.Excel.Sheets.ContentFinderCondition>()!;
 
         var solos = 0;
+        uint soloTerritory = 0;
         foreach (var row in cfc)
         {
             if (row.Name.IsEmpty || row.TerritoryType.RowId == 0 || row.ContentType.RowId is not (7 or 27))
@@ -604,6 +656,7 @@ public class GameDataCanaryTests(GameDataFixture fixture)
                 continue;
 
             solos++;
+            soloTerritory = row.TerritoryType.RowId;
             var full = store.FindDutyByTerritory(row.TerritoryType.RowId);
             Assert.NotNull(full);
             Assert.True(full.Solo, $"{full.Name}: light path says solo, full resolution disagrees");
@@ -611,6 +664,10 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         }
 
         Assert.True(solos > 80, $"only {solos} solo territories resolved - the light path drifted");
+
+        // The zone-in callback contract: before WarmAll, the light path skips
+        // rather than building the lookup on the game thread.
+        Assert.Null(new LuminaGameDataStore(fixture.GameData!).FindSoloDutyName(soloTerritory));
 
         var dungeon = cfc.First(r =>
             !r.Name.IsEmpty && r.Name.ExtractText().Contains("Sastasha", StringComparison.OrdinalIgnoreCase));

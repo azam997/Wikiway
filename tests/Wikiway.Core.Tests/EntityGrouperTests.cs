@@ -235,6 +235,68 @@ public class EntityGrouperTests
     }
 
     [Fact]
+    public void QuestInvolvedGroupsWithManyPinsShowNone()
+    {
+        var results = Enumerable.Range(1, 5)
+            .Select(i => (SearchResult)Card(Npc("Y'shtola", Loc($"Zone {i}", 10f + i, 10f, mapId: (uint)i),
+                (uint)i, handlers: 2,
+                sceneQuests: [Scene(66000u + (uint)i, $"Quest {i}"), Scene(66100u + (uint)i, $"Quest {i}b")]), 1.0))
+            .ToArray();
+
+        var card = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(results)));
+
+        Assert.Empty(card.MergedLocations);
+        Assert.Equal(5, card.MergedHidden);
+        Assert.Equal(5, card.MergedCount);
+    }
+
+    [Fact]
+    public void WipedSingleSceneCopiesSurfaceAsGatedAppearances()
+    {
+        var results = Enumerable.Range(1, 5)
+            .Select(i => (SearchResult)Card(Npc("Y'shtola", Loc($"Zone {i}", 10f + i, 10f, mapId: (uint)i),
+                (uint)i, handlers: 2, sceneQuests: [Scene(66000u + (uint)i, $"Quest {i}")]), 1.0))
+            .ToArray();
+
+        var open = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(results)));
+        Assert.Empty(open.MergedLocations);
+        Assert.Equal(5, open.CutsceneAppearances.Count);
+
+        var gated = Assert.IsType<EntityCardResult>(
+            Assert.Single(EntityGrouper.Collapse(results, id => id == 66001)));
+        var appearance = Assert.Single(gated.CutsceneAppearances);
+        Assert.Equal("Quest 1", appearance.Quest.Name);
+    }
+
+    [Fact]
+    public void AmbientFamiliesKeepManyPins()
+    {
+        var results = Enumerable.Range(1, 6)
+            .Select(i => (SearchResult)Card(Npc("Reveler", Loc($"Zone {i}", 10f + i, 10f, mapId: (uint)i),
+                (uint)i, handlers: 1), 1.0))
+            .ToArray();
+
+        var card = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(results)));
+
+        Assert.Equal(6, card.MergedLocations.Count);
+        Assert.Equal(0, card.MergedHidden);
+    }
+
+    [Fact]
+    public void FewPinsStayTrustedEvenWithQuestInvolvement()
+    {
+        var results = Enumerable.Range(1, 4)
+            .Select(i => (SearchResult)Card(Npc("Momodi", Loc($"Zone {i}", 10f + i, 10f, mapId: (uint)i),
+                (uint)i, handlers: 2, sceneQuests: [Scene(66000u + (uint)i, $"Quest {i}")]), 1.0))
+            .ToArray();
+
+        var card = Assert.IsType<EntityCardResult>(Assert.Single(EntityGrouper.Collapse(results)));
+
+        Assert.Equal(4, card.MergedLocations.Count);
+        Assert.Equal(0, card.MergedHidden);
+    }
+
+    [Fact]
     public void NameGroupingIgnoresCase()
     {
         var results = new SearchResult[]

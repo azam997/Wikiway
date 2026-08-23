@@ -12,6 +12,11 @@ internal static class MapLinkOpener
     // for their unsafe QuestManager reads.
     public static void Open(MapLocation location)
     {
+        // Plugin windows still render at character select and the DC-travel
+        // lobby, where the map agent machinery is not initialized.
+        if (!Plugin.ClientState.IsLoggedIn)
+            return;
+
         var link = new MapLinkPayload(location.TerritoryTypeId, location.MapId, location.MapX, location.MapY);
         Plugin.GameGui.OpenMapWithMapLink(link);
     }

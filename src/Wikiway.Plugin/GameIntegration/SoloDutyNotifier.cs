@@ -52,6 +52,9 @@ internal sealed class SoloDutyNotifier : IDisposable
             mainWindow.IsOpen = true;
             args.Notification.DismissNow();
         };
+        // Only the tracked toast is dismissed on Dispose; an overlapped
+        // predecessor would leak a click into a disposed window.
+        activeNotification?.DismissNow();
         activeNotification = notification;
     }
 }

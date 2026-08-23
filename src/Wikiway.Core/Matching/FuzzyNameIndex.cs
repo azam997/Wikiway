@@ -7,6 +7,8 @@ public sealed record NameMatch(NameIndexEntry Entry, double Score);
 
 public sealed class FuzzyNameIndex
 {
+    private const int TypoLimit = 8;
+
     private readonly record struct IndexedName(NameIndexEntry Entry, string Bare);
 
     private readonly List<IndexedName> entries;
@@ -68,9 +70,12 @@ public sealed class FuzzyNameIndex
             }
         }
 
-        // Typo tier - only worth the scan when nothing better matched.
+        // Typo tier - only worth the scan when nothing better matched, and a
+        // rescue rather than a listing: a garbled term is near thousands of
+        // unrelated short names, so only the closest few are worth showing.
         if (matches.Count == 0)
         {
+            var candidates = new List<(NameIndexEntry Entry, int Distance)>();
             foreach (var (entry, bare) in entries)
             {
                 if (!Matches(kinds, entry.Kind))
@@ -85,7 +90,16 @@ public sealed class FuzzyNameIndex
                 }
 
                 if (distance >= 0)
-                    Add(matches, seen, entry, 0.6 - (0.05 * distance));
+                    candidates.Add((entry, distance));
+            }
+
+            foreach (var (entry, distance) in candidates
+                .OrderBy(c => c.Distance)
+                .ThenBy(c => c.Entry.Name.Length)
+                .ThenBy(c => c.Entry.Name, StringComparer.Ordinal)
+                .Take(TypoLimit))
+            {
+                Add(matches, seen, entry, 0.6 - (0.05 * distance));
             }
         }
 

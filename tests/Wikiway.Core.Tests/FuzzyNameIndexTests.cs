@@ -93,6 +93,30 @@ public class FuzzyNameIndexTests
     }
 
     [Fact]
+    public void TypoTierCapsAtTheClosestEightNames()
+    {
+        var names = Enumerable.Range(0, 10).Select(i => $"chocoba{i}")
+            .Append("chocobi")
+            .ToArray();
+        var index = Index(names);
+
+        var matches = index.Search("chocobo", limit: 500);
+
+        Assert.Equal(8, matches.Count);
+        Assert.Equal("chocobi", matches[0].Entry.Name);
+    }
+
+    [Fact]
+    public void TypoTierPrefersShorterNamesAtEqualDistance()
+    {
+        var index = Index("chocoboo", "chocobo");
+
+        var matches = index.Search("chocobos", limit: 500);
+
+        Assert.Equal("chocobo", matches[0].Entry.Name);
+    }
+
+    [Fact]
     public void KindFilterExcludesOtherKinds()
     {
         var index = new FuzzyNameIndex(
