@@ -74,6 +74,18 @@ public class ConfigWindow : Window
             "Steps link to that quest in the Quests & Unlocks tab, and completed " +
             "steps get checkmarks while you are logged in.");
 
+        var equipStats = config.ShowEquipmentStats;
+        if (ImGui.Checkbox("Show equipment stats on item cards", ref equipStats))
+        {
+            config.ShowEquipmentStats = equipStats;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "Equippable items get an Equipment section on their expanded card. " +
+            "Ex: item level, stats, materia slots, repair and resale - read from the game files.");
+
         var cutscenes = config.ShowCutsceneAppearances;
         if (ImGui.Checkbox("Show cutscene appearances on NPC cards", ref cutscenes))
         {

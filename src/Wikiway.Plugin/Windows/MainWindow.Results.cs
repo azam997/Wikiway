@@ -301,6 +301,8 @@ public partial class MainWindow
         ImGui.BeginGroup();
         RowTitle(item.Name);
         RowTag(item.Category.Length > 0 ? $"Item · {item.Category}" : "Item", TagStyle.Accent);
+        if (plugin.Configuration.ShowEquipmentStats && item.Equipment is { } gear)
+            RowTag($"ilvl {gear.ItemLevel} · Lv. {gear.EquipLevel}", TagStyle.Outline);
         RowCitation(card.Source.Label);
         RowDetailControls(card);
 
@@ -695,6 +697,7 @@ public partial class MainWindow
         !IsSpoilerGated(card)
         && (card.WikiSections.Count > 0
             || card.Entity is ItemEntity { Acquisition: not null }
+            || (plugin.Configuration.ShowEquipmentStats && card.Entity is ItemEntity { Equipment: not null })
             || ShowNpcTabs(card)
             || (plugin.Configuration.ShowUnlockRequirements
                 && card.Entity is QuestEntity { UnlockChains.Count: > 0 }
@@ -742,6 +745,9 @@ public partial class MainWindow
 
         if (card.Entity is NpcEntity npcEntity && ShowNpcTabs(card))
             DrawNpcTabs(card, npcEntity);
+
+        if (plugin.Configuration.ShowEquipmentStats && card.Entity is ItemEntity { Equipment: { } equipment })
+            DrawEquipment(equipment);
 
         if (card.Entity is ItemEntity { Acquisition: { } acquisition })
         {
@@ -946,6 +952,96 @@ public partial class MainWindow
             DrawSectionList(card.Title, card.WikiSections);
         }
     }
+
+    private void DrawEquipment(ItemEquipment eq)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        ImGui.Spacing();
+        DetailLabel("EQUIPMENT");
+
+        fonts.Body13.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+        ImGui.TextUnformatted(FontAwesomeIcon.ShieldAlt.ToIconString());
+        ImGui.PopStyleColor();
+        ImGui.SameLine(0, Theme.Space3 * scale);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+        ImGui.TextUnformatted(eq.Slot.Length > 0 ? $"{eq.Slot} · ilvl {eq.ItemLevel}" : $"ilvl {eq.ItemLevel}");
+        ImGui.PopStyleColor();
+        ImGui.SameLine(0, Theme.Space3 * scale);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+        ImGui.TextUnformatted(eq.ClassJobs.Length > 0 ? $"Lv. {eq.EquipLevel} · {eq.ClassJobs}" : $"Lv. {eq.EquipLevel}");
+        ImGui.PopStyleColor();
+
+        var combat = new List<string>();
+        if (eq.Weapon is { } weapon)
+        {
+            if (weapon.PhysDamage > 0)
+                combat.Add($"Physical Damage {weapon.PhysDamage}{HqSuffix(weapon.HqPhysBonus)}");
+            if (weapon.MagDamage > 0)
+                combat.Add($"Magic Damage {weapon.MagDamage}{HqSuffix(weapon.HqMagBonus)}");
+            combat.Add(string.Create(CultureInfo.InvariantCulture, $"Delay {weapon.DelaySeconds:0.00}s"));
+        }
+
+        if (eq.Defense is { } defense)
+        {
+            combat.Add($"Defense {defense.Physical}{HqSuffix(defense.HqPhysBonus)}");
+            combat.Add($"Magic Defense {defense.Magical}{HqSuffix(defense.HqMagBonus)}");
+        }
+
+        if (eq.Block is { } block)
+        {
+            combat.Add($"Block {block.Strength}{HqSuffix(block.HqStrengthBonus)}");
+            combat.Add($"Block Rate {block.Rate}{HqSuffix(block.HqRateBonus)}");
+        }
+
+        if (combat.Count > 0)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            ImGui.TextUnformatted(string.Join(" · ", combat));
+            ImGui.PopStyleColor();
+        }
+
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+        foreach (var stat in eq.Stats)
+            ImGui.TextUnformatted($"{stat.Name} {(stat.Value >= 0 ? "+" : "")}{stat.Value}{HqSuffix(stat.HqBonus)}");
+        ImGui.PopStyleColor();
+        fonts.Body13.Pop();
+
+        var meta = new List<string>();
+        if (eq.MateriaSlots > 0)
+            meta.Add($"{eq.MateriaSlots} materia slot{(eq.MateriaSlots > 1 ? "s" : "")}{(eq.AdvancedMelding ? " (advanced melding)" : "")}");
+        if (eq.DyeCount > 0)
+            meta.Add(eq.DyeCount > 1 ? $"Dyeable ×{eq.DyeCount}" : "Dyeable");
+        if (eq.Unique)
+            meta.Add("Unique");
+        if (eq.Untradable)
+            meta.Add("Untradable");
+        if (eq.CanBeHq)
+            meta.Add("HQ available");
+        if (eq.Repair.Length > 0)
+            meta.Add($"Repair: {eq.Repair}");
+        if (eq.Desynthable)
+            meta.Add("Desynthable");
+        if (eq.SellPrice > 0 && !eq.Untradable)
+            meta.Add($"Sells for {eq.SellPrice} gil");
+        if (eq.Series.Length > 0)
+            meta.Add($"Set: {eq.Series}");
+        if (eq.SpecialBonus.Length > 0)
+            meta.Add(eq.SpecialBonus);
+
+        if (meta.Count > 0)
+        {
+            fonts.Citation12.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
+            ImGui.TextWrapped(string.Join(" · ", meta));
+            ImGui.PopStyleColor();
+            fonts.Citation12.Pop();
+        }
+    }
+
+    private static string HqSuffix(int bonus) => bonus > 0 ? $" (+{bonus} HQ)" : "";
 
     private void DrawNpcTabs(EntityCardResult card, NpcEntity npc)
     {

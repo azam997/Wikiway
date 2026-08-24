@@ -13,6 +13,7 @@ public class Configuration : IPluginConfiguration
     public bool ContextMenuEnabled { get; set; } = true;
     public bool SoloDutyToastEnabled { get; set; } = true;
     public bool ShowUnlockRequirements { get; set; } = true;
+    public bool ShowEquipmentStats { get; set; } = true;
     public bool ShowCutsceneAppearances { get; set; } = true;
     public bool CapNpcLocationPins { get; set; } = true;
     public bool ActiveQuestPickerEnabled { get; set; } = true;

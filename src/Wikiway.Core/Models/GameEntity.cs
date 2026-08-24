@@ -10,7 +10,10 @@ public sealed record ItemEntity(
     bool Marketable,
     ushort Icon = 0,
     ItemAcquisition? Acquisition = null)
-    : GameEntity(RowId, Name);
+    : GameEntity(RowId, Name)
+{
+    public ItemEquipment? Equipment { get; init; }
+}
 
 public sealed record NpcEntity(uint RowId, string Name, MapLocation? Location, int EventHandlers = 0)
     : GameEntity(RowId, Name)

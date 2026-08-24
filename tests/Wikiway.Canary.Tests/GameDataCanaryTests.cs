@@ -691,6 +691,69 @@ public class GameDataCanaryTests(GameDataFixture fixture)
             r => r.Title.Equals("Cosmic Operator's Attire", StringComparison.OrdinalIgnoreCase));
     }
 
+    // Pins the equipment chain: EquipSlotCategory flags -> slot name,
+    // ClassJobCategory, LevelItem, damage columns. The MRD starting weapon has
+    // been an untouched level-1 two-hander since 2013. It carries no BaseParam
+    // stats and can't be HQ, so phantom stats here mean a column read drifted.
+    [Fact]
+    public void WeatheredWarAxeEquipmentResolvesFromSheets()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(1749);
+        Assert.NotNull(item);
+        Assert.Equal("Weathered War Axe", item.Name);
+        Assert.NotNull(item.Equipment);
+        Assert.Equal("Main Hand", item.Equipment.Slot);
+        Assert.Equal(1, item.Equipment.EquipLevel);
+        Assert.InRange(item.Equipment.ItemLevel, 1, 10);
+        Assert.Contains("MRD", item.Equipment.ClassJobs);
+        Assert.NotNull(item.Equipment.Weapon);
+        Assert.InRange(item.Equipment.Weapon.PhysDamage, 5, 15);
+        Assert.InRange(item.Equipment.Weapon.DelaySeconds, 1.0, 5.0);
+        Assert.Empty(item.Equipment.Stats);
+        Assert.False(item.Equipment.CanBeHq);
+        Assert.StartsWith("BSM", item.Equipment.Repair);
+    }
+
+    // Pins the HQ-delta semantics: BaseParamSpecial rows 21/24 carry the HQ
+    // defense bonuses on crafted armor (probed 2026-08-23). Bronze Cuirass has
+    // been a level-15 CanBeHq armorer craft with two materia slots since 2013.
+    [Fact]
+    public void BronzeCuirassHqBonusesResolveFromSpecialParams()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(3026);
+        Assert.NotNull(item);
+        Assert.Equal("Bronze Cuirass", item.Name);
+        Assert.NotNull(item.Equipment);
+        Assert.Equal("Body", item.Equipment.Slot);
+        Assert.True(item.Equipment.CanBeHq);
+        Assert.NotNull(item.Equipment.Defense);
+        Assert.InRange(item.Equipment.Defense.Physical, 30, 50);
+        Assert.InRange(item.Equipment.Defense.HqPhysBonus, 3, 8);
+        Assert.InRange(item.Equipment.Defense.HqMagBonus, 3, 8);
+        Assert.InRange(item.Equipment.Stats.Count, 2, 5);
+        Assert.All(item.Equipment.Stats, s => Assert.False(string.IsNullOrEmpty(s.Name)));
+        Assert.InRange(item.Equipment.MateriaSlots, 1, 5);
+        Assert.False(string.IsNullOrEmpty(item.Equipment.Repair));
+    }
+
+    // 28,993 as of 7.3. Non-gear must stay payload-free or every item card
+    // grows a bogus EQUIPMENT block.
+    [Fact]
+    public void EquippableItemCountLandsInAPlausibleBand()
+    {
+        var store = fixture.Store();
+        var items = fixture.GameData!.GetExcelSheet<Lumina.Excel.Sheets.Item>()!;
+
+        var equippable = items.Count(r => r.EquipSlotCategory.RowId != 0);
+        Assert.InRange(equippable, 20_000, 60_000);
+
+        Assert.Null(store.GetItem(5057)!.Equipment);
+    }
+
     private static int Count(IReadOnlyList<NameIndexEntry> names, EntityKind kind) =>
         names.Count(n => n.Kind == kind);
 }
