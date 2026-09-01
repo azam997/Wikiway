@@ -21,22 +21,22 @@ All Dalamud services arrive via `[PluginService]` static properties on `Plugin` 
 | `UiBuilder.OpenConfigUi += / -=` | `Plugin.cs:148`, `Plugin.cs:169` | Open the settings window from the installer's cog. |
 | `SavePluginConfig(this)` | `Configuration.cs:25` | Persist settings whenever a config value changes. |
 | `AssemblyLocation.DirectoryName` | `MainWindow.cs:199` | Locate the bundled `images/logo64.png` next to the plugin assembly. |
-| `GetIpcSubscriber<uint, byte, bool>("Teleport")` / `("Lifestream.Teleport")` | `GameIntegration/TeleportService.cs:23`, `:25` | Subscribe to the teleport gates the Teleporter and Lifestream plugins provide (see the IPC section). Subscribing to an absent gate is legal; only invoking it throws. |
-| `InstalledPlugins` (`IExposedPlugin.IsLoaded`, `.InternalName`) | `TeleportService.cs:41` | Decide whether a Teleport button can appear at all: one of the two providers must be loaded. Re-read every ~2s from the draw loop, not per button. |
+| `GetIpcSubscriber<uint, byte, bool>("Teleport")` | `GameIntegration/TeleportService.cs:19` | Subscribe to the teleport gate the Teleporter plugin provides (see the IPC section). Subscribing to an absent gate is legal; only invoking it throws. |
+| `InstalledPlugins` (`IExposedPlugin.IsLoaded`, `.InternalName`) | `TeleportService.cs:35` | Decide whether a Teleport button can appear at all: Teleporter must be loaded. Re-read every ~2s from the draw loop, not per button. |
 
 `Configuration` implements `IPluginConfiguration` (`Configuration.cs:7`) so Dalamud can serialize it.
 
 ## IPC (Dalamud.Plugin.Ipc)
 
-Wikiway provides no IPC; it only consumes two teleport gates, both `Func<uint aetheryteId, byte subIndex, bool>`, and never calls the game's own teleport function.
+Wikiway provides no IPC; it only consumes Teleporter's teleport gate, a `Func<uint aetheryteId, byte subIndex, bool>`, and never calls the game's own teleport function.
 
 | Call | Location | Why |
 |---|---|---|
-| `ICallGateSubscriber<uint, byte, bool>.InvokeFunc(id, 0)` | `TeleportService.cs:92` | Ask the provider to teleport to a result's nearest aetheryte. Teleporter's `Teleport` gate is tried first, then Lifestream's `Lifestream.Teleport` (gate name and signature verified by reflection over Lifestream's shipped assembly - EzIPC prefixes the method name with the plugin name). |
-| `catch (IpcNotReadyError)` | `TeleportService.cs:95` | The gate has no provider; fall through to the next gate, and toast if neither is present. |
-| `catch (TargetInvocationException)` | `TeleportService.cs:99` | Dalamud invokes the provider through `DynamicInvoke` and wraps nothing, so a throw inside Teleporter or Lifestream arrives as this, not as an `IpcError`. Logged; the provider counts as present, so the next gate is not tried. |
-| `catch (IpcError)` | `TeleportService.cs:75` | Any other IPC failure (type mismatch after a provider update) is logged, never rethrown into the draw loop. |
-| `catch (Exception)` | `TeleportService.cs:79` | Last resort: this runs inside a draw-loop click handler and nothing may escape into the frame. |
+| `ICallGateSubscriber<uint, byte, bool>.InvokeFunc(id, 0)` | `TeleportService.cs:86` | Ask Teleporter, via its `Teleport` gate, to teleport to a result's nearest aetheryte. |
+| `catch (IpcNotReadyError)` | `TeleportService.cs:89` | The gate has no provider; toast that Teleporter is needed. |
+| `catch (TargetInvocationException)` | `TeleportService.cs:93` | Dalamud invokes the provider through `DynamicInvoke` and wraps nothing, so a throw inside Teleporter arrives as this, not as an `IpcError`. Logged; the provider counts as present and has reported the failure itself. |
+| `catch (IpcError)` | `TeleportService.cs:69` | Any other IPC failure (type mismatch after a provider update) is logged, never rethrown into the draw loop. |
+| `catch (Exception)` | `TeleportService.cs:73` | Last resort: this runs inside a draw-loop click handler and nothing may escape into the frame. |
 
 ## ICommandManager
 
@@ -71,7 +71,7 @@ The only game-struct type used is `FFXIVClientStructs.FFXIV.Client.Game.QuestMan
 
 | Call | Location | Why |
 |---|---|---|
-| `IsLoggedIn` | `ActiveQuestReader.cs:18`, `QuestProgressTracker.cs:53`, `MapLinkOpener.cs:17`, `TeleportService.cs:45`, `:60` | Skip journal/progress reads while logged out (gating fails open); skip map-link opens at character select and the DC-travel lobby, where the map agent isn't initialized; treat the aetheryte list as empty and refuse teleport calls while logged out. |
+| `IsLoggedIn` | `ActiveQuestReader.cs:18`, `QuestProgressTracker.cs:53`, `MapLinkOpener.cs:17`, `TeleportService.cs:39`, `:54` | Skip journal/progress reads while logged out (gating fails open); skip map-link opens at character select and the DC-travel lobby, where the map agent isn't initialized; treat the aetheryte list as empty and refuse teleport calls while logged out. |
 | `TerritoryChanged += / -=` | `GameIntegration/SoloDutyNotifier.cs:21`, `:26` | Detect zoning into a solo duty (fires at zone-in, before the commence dialog unlike `IDutyState.DutyStarted`). |
 | `Logout += / -=` | `Windows/MainWindow.cs:64`, `:69` | Clear per-character spoiler reveals; the next login may be an alt. |
 
@@ -79,7 +79,7 @@ The only game-struct type used is `FFXIVClientStructs.FFXIV.Client.Game.QuestMan
 
 | Call | Location | Why |
 |---|---|---|
-| `Length` + indexer, `IAetheryteEntry.AetheryteId` | `TeleportService.cs:47-51` | Snapshot the aetherytes the character has attuned to (the Teleport window's list) every ~2s from the draw loop. A Teleport button only appears for attuned aetherytes, so a click can't fail on an unvisited one. Housing entries share their district aetheryte's id and are not distinguished. |
+| `Length` + indexer, `IAetheryteEntry.AetheryteId` | `TeleportService.cs:41-45` | Snapshot the aetherytes the character has attuned to (the Teleport window's list) every ~2s from the draw loop. A Teleport button only appears for attuned aetherytes, so a click can't fail on an unvisited one. Housing entries share their district aetheryte's id and are not distinguished. |
 
 ## IContextMenu
 
@@ -102,7 +102,7 @@ The only game-struct type used is `FFXIVClientStructs.FFXIV.Client.Game.QuestMan
 |---|---|---|
 | `AddNotification` + `Click` + `DismissNow` | `SoloDutyNotifier.cs:41`, `:49`, `:28`/`:53`/`:57` | Solo-duty toast; click opens the duty lookup, a new toast dismisses an overlapped predecessor, and dispose dismisses so a stale toast can't click into a disposed window. |
 | `AddNotification` | `Windows/ConfigWindow.cs:180` | Confirm "Clear wiki cache" completed (async, so a toast rather than inline text). |
-| `AddNotification` | `TeleportService.cs:67` | Tell the user a Teleport click found no provider (only reachable if a provider unloads between the button appearing and the click). |
+| `AddNotification` | `TeleportService.cs:61` | Tell the user a Teleport click found no provider (only reachable if Teleporter unloads between the button appearing and the click). |
 
 ## ITextureProvider
 
@@ -113,7 +113,7 @@ The only game-struct type used is `FFXIVClientStructs.FFXIV.Client.Game.QuestMan
 
 ## IPluginLog
 
-Warnings and errors only: unreadable stored config (`Plugin.cs:67`, `:209`, `:225`), cache-store warnings (`Plugin.cs:72`), warm-up failure (`Plugin.cs:123`), command-name collision (`Plugin.cs:234`), draw-loop crash recovery (`MainWindow.cs:191`), failed search (`MainWindow.cs:523`), unresolved `IsQuestComplete` signature (`QuestProgressTracker.cs:43`), teleport IPC or provider failure (`TeleportService.cs:77`, `:82`, `:105`).
+Warnings and errors only: unreadable stored config (`Plugin.cs:67`, `:209`, `:225`), cache-store warnings (`Plugin.cs:72`), warm-up failure (`Plugin.cs:123`), command-name collision (`Plugin.cs:234`), draw-loop crash recovery (`MainWindow.cs:191`), failed search (`MainWindow.cs:523`), unresolved `IsQuestComplete` signature (`QuestProgressTracker.cs:43`), teleport IPC or provider failure (`TeleportService.cs:71`, `:76`, `:99`).
 
 ## Windowing (Dalamud.Interface.Windowing)
 

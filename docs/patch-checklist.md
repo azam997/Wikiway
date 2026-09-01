@@ -31,4 +31,4 @@ when a canary run fails.
    - `/wikiway the ultimate weapon` - quest card with prerequisites
    - `/wikiway aether currents` - wiki rows under the WIKI RESULTS strip; Open reaches the page
    - `/wikiway iron ore` - expanded card's gathering line ends in "Aetheryte: Horizon"; with
-     Teleporter or Lifestream loaded and Horizon attuned, a Teleport button sits left of Flag map
+     Teleporter loaded and Horizon attuned, a Teleport button sits left of Flag map

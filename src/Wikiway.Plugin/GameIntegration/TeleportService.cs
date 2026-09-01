@@ -8,21 +8,15 @@ using Dalamud.Plugin.Ipc.Exceptions;
 
 namespace Wikiway.Plugin.GameIntegration;
 
-// Teleporting goes through another plugin's IPC rather than the game's Telepo
-// directly: Teleporter ("Teleport") and Lifestream ("Lifestream.Teleport")
-// both expose (aetheryteId, subIndex) -> bool. Lifestream's gate name and
-// signature were verified by reflection over its shipped assembly (EzIPC
-// prefixes the method name with the plugin name).
+// Teleporting goes through the Teleporter plugin's IPC rather than the game's
+// Telepo directly: its "Teleport" gate exposes (aetheryteId, subIndex) -> bool.
 internal sealed class TeleportService
 {
     private const string TeleporterInternalName = "TeleporterPlugin";
-    private const string LifestreamInternalName = "Lifestream";
     private const long StaleMs = 2000;
 
     private readonly ICallGateSubscriber<uint, byte, bool> teleporter =
         Plugin.PluginInterface.GetIpcSubscriber<uint, byte, bool>("Teleport");
-    private readonly ICallGateSubscriber<uint, byte, bool> lifestream =
-        Plugin.PluginInterface.GetIpcSubscriber<uint, byte, bool>("Lifestream.Teleport");
 
     private HashSet<uint> attuned = [];
     private bool providerLoaded;
@@ -39,7 +33,7 @@ internal sealed class TeleportService
 
         lastRefresh = Environment.TickCount64;
         providerLoaded = Plugin.PluginInterface.InstalledPlugins.Any(p =>
-            p.IsLoaded && p.InternalName is TeleporterInternalName or LifestreamInternalName);
+            p.IsLoaded && p.InternalName is TeleporterInternalName);
 
         var set = new HashSet<uint>();
         if (Plugin.ClientState.IsLoggedIn)
@@ -62,12 +56,12 @@ internal sealed class TeleportService
 
         try
         {
-            if (!Invoke(teleporter, aetheryteId) && !Invoke(lifestream, aetheryteId))
+            if (!Invoke(teleporter, aetheryteId))
             {
                 Plugin.NotificationManager.AddNotification(new Notification
                 {
                     Title = "Wikiway",
-                    Content = "Teleporting needs the Teleporter or Lifestream plugin.",
+                    Content = "Teleporting needs the Teleporter plugin.",
                     Type = NotificationType.Warning,
                 });
             }
@@ -84,7 +78,7 @@ internal sealed class TeleportService
     }
 
     // False only when the gate has no provider; the provider's own result is
-    // not surfaced because both plugins already report failures in chat.
+    // not surfaced because Teleporter already reports failures in chat.
     private static bool Invoke(ICallGateSubscriber<uint, byte, bool> gate, uint aetheryteId)
     {
         try
@@ -99,9 +93,9 @@ internal sealed class TeleportService
         catch (TargetInvocationException e)
         {
             // Dalamud calls the provider through DynamicInvoke and wraps
-            // nothing, so a throw inside Teleporter or Lifestream arrives as
-            // this rather than as an IpcError. The provider exists, so the
-            // next gate is not tried.
+            // nothing, so a throw inside Teleporter arrives as this rather
+            // than as an IpcError. The provider exists and has reported the
+            // failure itself.
             Plugin.Log.Warning(e.InnerException ?? e, "Teleport provider threw.");
             return true;
         }

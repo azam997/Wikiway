@@ -143,7 +143,7 @@ public class ConfigWindow : Window
 
         ImGui.SameLine();
         ImGuiComponents.HelpMarker(
-            "Needs the Teleporter or Lifestream plugin. The button only appears for " +
+            "Needs the Teleporter plugin. The button only appears for " +
             "aetherytes you have attuned to, and teleports there when clicked.");
 
         var spoilers = config.SpoilerProtectionEnabled;
