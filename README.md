@@ -94,6 +94,7 @@ AGPL-3.0-or-later. See [LICENSE](LICENSE).
 
 Wikiway was written with AI assistance at the **Copilot** level as defined by
 the [Dalamud AI Usage Policy](https://dalamud.dev/plugin-publishing/ai-policy):
-the AI wrote most of the code, while planning, review, in-game testing and
-final responsibility for the result are the maintainer's. No assets in this
-repository are AI-generated.
+the AI wrote most of the code and unit tests, while planning, code review,
+in-game verification and final responsibility for the result are the
+maintainer's. See [AI-DECLARATION.md](AI-DECLARATION.md) for the full
+breakdown. No assets in this repository are AI-generated.
