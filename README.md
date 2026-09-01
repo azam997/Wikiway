@@ -83,8 +83,7 @@ The canary suite is the early-warning system for things that break under us:
 the bin folder first if you've built Release before - stale packager output
 gets swept into the zip otherwise. Submission to the official repo goes
 through a PR against [goatcorp/DalamudPluginsD17](https://github.com/goatcorp/DalamudPluginsD17)
-once the plugin has had some real-world soak time - see
-[docs/dalamud-submission.md](docs/dalamud-submission.md) for the checklist.
+once the plugin has had some real-world soak time.
 
 ## Layout
 
