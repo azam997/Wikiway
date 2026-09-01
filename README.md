@@ -10,7 +10,16 @@ when the game data alone isn't enough. Every result shows where it came from.
 Local results follow your client language; the wiki is English, so wiki results
 work best with English terms.
 
-## What leaves your machine
+## AI assistance
+
+Wikiway was written with AI assistance at the **Copilot** level as defined by
+the [Dalamud AI Usage Policy](https://dalamud.dev/plugin-publishing/ai-policy):
+the AI wrote most of the code and unit tests, while planning, code review,
+in-game verification and final responsibility for the result are the
+maintainer's. See [AI-DECLARATION.md](AI-DECLARATION.md) for the full
+breakdown. No assets in this repository are AI-generated.
+
+## Network Requests
 
 Local game data answers most questions with no network access at all. When the
 wiki is consulted, the plugin sends the search term to
@@ -89,12 +98,3 @@ once the plugin has had some real-world soak time - see
 ## License
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).
-
-## AI assistance
-
-Wikiway was written with AI assistance at the **Copilot** level as defined by
-the [Dalamud AI Usage Policy](https://dalamud.dev/plugin-publishing/ai-policy):
-the AI wrote most of the code and unit tests, while planning, code review,
-in-game verification and final responsibility for the result are the
-maintainer's. See [AI-DECLARATION.md](AI-DECLARATION.md) for the full
-breakdown. No assets in this repository are AI-generated.
