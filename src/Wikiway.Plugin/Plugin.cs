@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Dalamud.Configuration;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
@@ -58,91 +59,105 @@ public sealed class Plugin : IDalamudPlugin
 
     public Plugin()
     {
-        var storedConfig = PluginInterface.GetPluginConfig();
-        Configuration = storedConfig as Configuration ?? new Configuration();
-        if (storedConfig != null && !ReferenceEquals(Configuration, storedConfig))
-            Log.Warning("Stored configuration was unreadable; starting with defaults.");
-        Fonts = new Fonts(PluginInterface.UiBuilder.FontAtlas);
-
-        var fileCache = new FileCacheStore(
-            Path.Combine(PluginInterface.GetPluginConfigDirectory(), "cache"),
-            message => Log.Warning("{Message}", message));
-        CacheStore = fileCache;
-        httpClient = new HttpClient(new CachingHandler(CacheStore)
+        try
         {
-            InnerHandler = new ThrottlingHandler
+            var storedConfig = LoadConfiguration();
+            Configuration = storedConfig as Configuration ?? new Configuration();
+            if (storedConfig != null && !ReferenceEquals(Configuration, storedConfig))
+                Log.Warning("Stored configuration was unreadable; starting with defaults.");
+            Fonts = new Fonts(PluginInterface.UiBuilder.FontAtlas);
+
+            var fileCache = new FileCacheStore(
+                Path.Combine(PluginInterface.GetPluginConfigDirectory(), "cache"),
+                message => Log.Warning("{Message}", message));
+            CacheStore = fileCache;
+            httpClient = new HttpClient(new CachingHandler(CacheStore)
             {
-                InnerHandler = new HttpClientHandler
+                InnerHandler = new ThrottlingHandler
                 {
-                    AutomaticDecompression = System.Net.DecompressionMethods.All,
+                    InnerHandler = new HttpClientHandler
+                    {
+                        AutomaticDecompression = System.Net.DecompressionMethods.All,
+                    },
                 },
-            },
-        });
-        var wikiClient = new ConsoleGamesWikiClient(httpClient);
-        var gameDataStore = new LuminaGameDataStore(DataManager.GameData);
-        QuestProgress = new QuestProgressTracker();
-        Teleport = new TeleportService();
+            });
+            var wikiClient = new ConsoleGamesWikiClient(httpClient);
+            var gameDataStore = new LuminaGameDataStore(DataManager.GameData);
+            QuestProgress = new QuestProgressTracker();
+            Teleport = new TeleportService();
 
-        // Spoiler gating fails OPEN while logged out or before the first
-        // progress snapshot - a lookup tool that hides data it can't verify
-        // would be wrong more often than it protects.
-        localProvider = new LocalGameDataProvider(
-            gameDataStore,
-            id => !Configuration.SpoilerProtectionEnabled
-                || !QuestProgress.IsAvailable
-                || QuestProgress.IsComplete(id),
-            shutdownCts.Token);
-        Pipeline = new QueryOrchestrator(
-            [
-                localProvider,
-                new ConsoleGamesWikiProvider(
-                    wikiClient,
-                    () => Configuration.WikiSearchEnabled,
-                    () => Configuration.MaxWikiResults),
-            ],
-            new QueryNormalizer(),
-            new ResultRanker());
+            // Spoiler gating fails OPEN while logged out or before the first
+            // progress snapshot - a lookup tool that hides data it can't verify
+            // would be wrong more often than it protects.
+            localProvider = new LocalGameDataProvider(
+                gameDataStore,
+                id => !Configuration.SpoilerProtectionEnabled
+                    || !QuestProgress.IsAvailable
+                    || QuestProgress.IsComplete(id),
+                shutdownCts.Token);
+            Pipeline = new QueryOrchestrator(
+                [
+                    localProvider,
+                    new ConsoleGamesWikiProvider(
+                        wikiClient,
+                        () => Configuration.WikiSearchEnabled,
+                        () => Configuration.MaxWikiResults),
+                ],
+                new QueryNormalizer(),
+                new ResultRanker());
 
-        // Game-thread callbacks and first searches otherwise pay for the lazy
-        // lookup builds; warm everything on one background task instead.
-        warmupTask = Task.Run(() =>
+            // Game-thread callbacks and first searches otherwise pay for the lazy
+            // lookup builds; warm everything on one background task instead.
+            warmupTask = Task.Run(() =>
+            {
+                try
+                {
+                    gameDataStore.WarmAll(shutdownCts.Token);
+                    fileCache.Sweep(TimeSpan.FromDays(7), shutdownCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (Exception e)
+                {
+                    Log.Warning(e, "Background lookup warm-up failed.");
+                }
+            });
+
+            mainWindow = new MainWindow(this);
+            configWindow = new ConfigWindow(this);
+            tutorialWindow = new TutorialWindow(Configuration);
+            WindowSystem.AddWindow(mainWindow);
+            WindowSystem.AddWindow(configWindow);
+            WindowSystem.AddWindow(tutorialWindow);
+
+            if (!Configuration.TutorialSeen)
+                tutorialWindow.IsOpen = true;
+
+            contextMenuIntegration = new ContextMenuIntegration(mainWindow, gameDataStore, Configuration);
+            soloDutyNotifier = new SoloDutyNotifier(mainWindow, gameDataStore, Configuration);
+
+            AddCommand(CommandName,
+                "Look something up. /wikiway <question or name>, " +
+                "or scope it: /wikiway quest:the ultimate weapon (item:, quest:, gather:, npc:, unlock:)");
+            AddCommand(CommandAlias, "Alias for /wikiway.");
+            AddCommand(CommandShort, "Alias for /wikiway.");
+
+            PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
+            PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
+            PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigUi;
+        }
+        catch
         {
-            try
-            {
-                gameDataStore.WarmAll(shutdownCts.Token);
-                fileCache.Sweep(TimeSpan.FromDays(7), shutdownCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception e)
-            {
-                Log.Warning(e, "Background lookup warm-up failed.");
-            }
-        });
-
-        mainWindow = new MainWindow(this);
-        configWindow = new ConfigWindow(this);
-        tutorialWindow = new TutorialWindow(Configuration);
-        WindowSystem.AddWindow(mainWindow);
-        WindowSystem.AddWindow(configWindow);
-        WindowSystem.AddWindow(tutorialWindow);
-
-        if (!Configuration.TutorialSeen)
-            tutorialWindow.IsOpen = true;
-
-        contextMenuIntegration = new ContextMenuIntegration(mainWindow, gameDataStore, Configuration);
-        soloDutyNotifier = new SoloDutyNotifier(mainWindow, gameDataStore, Configuration);
-
-        AddCommand(CommandName,
-            "Look something up. /wikiway <question or name>, " +
-            "or scope it: /wikiway quest:the ultimate weapon (item:, quest:, gather:, npc:, unlock:)");
-        AddCommand(CommandAlias, "Alias for /wikiway.");
-        AddCommand(CommandShort, "Alias for /wikiway.");
-
-        PluginInterface.UiBuilder.Draw += WindowSystem.Draw;
-        PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
-        PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigUi;
+            // Dalamud never calls Dispose on a constructor that threw. Its
+            // scoped services take back the commands, events and font atlas,
+            // but the index build and warm-up would keep walking sheets and
+            // pin this assembly until the game exits.
+            shutdownCts.Cancel();
+            httpClient?.Dispose();
+            Fonts?.Dispose();
+            throw;
+        }
     }
 
     public void Dispose()
@@ -178,6 +193,37 @@ public sealed class Plugin : IDalamudPlugin
         httpClient.Dispose();
         Fonts.Dispose();
         shutdownCts.Dispose();
+    }
+
+    // Dalamud deserializes the config file with no error handling of its own,
+    // so a truncated Wikiway.json (a crash mid-save) would otherwise fail the
+    // constructor and leave the plugin unloadable until the file is deleted.
+    private static IPluginConfiguration? LoadConfiguration()
+    {
+        try
+        {
+            return PluginInterface.GetPluginConfig();
+        }
+        catch (Exception e)
+        {
+            Log.Error(e, "Stored configuration could not be read; starting with defaults.");
+            BackUpConfigFile();
+            return null;
+        }
+    }
+
+    private static void BackUpConfigFile()
+    {
+        try
+        {
+            var file = PluginInterface.ConfigFile;
+            if (file.Exists)
+                file.CopyTo(file.FullName + ".corrupt", overwrite: true);
+        }
+        catch (Exception e)
+        {
+            Log.Warning(e, "Could not back up the unreadable configuration file.");
+        }
     }
 
     private void AddCommand(string name, string help)

@@ -115,6 +115,21 @@ public class WikiProviderTests
     }
 
     [Fact]
+    public async Task SectionsBudgetExpiryKeepsThePageHits()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(new WikiSearchHit("Iron Ingot", 1, ""))
+        {
+            SectionsFailure = new OperationCanceledException(),
+        });
+
+        var result = await provider.SearchAsync(Query("iron ingot", SearchCategory.Items), CancellationToken.None);
+
+        Assert.Equal(ProviderStatus.Ok, result.Status);
+        var page = Assert.IsType<WikiPageResult>(Assert.Single(result.Results));
+        Assert.Equal("Iron Ingot", page.Title);
+    }
+
+    [Fact]
     public void DisabledInConfigMeansUnavailable()
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(), enabled: () => false);
@@ -126,6 +141,8 @@ public class WikiProviderTests
     {
         public IReadOnlyList<WikiSection> Sections { get; init; } = [];
 
+        public Exception? SectionsFailure { get; init; }
+
         public Uri PageUrl(string title) =>
             new("https://ffxiv.consolegameswiki.com/wiki/" + title.Replace(' ', '_'));
 
@@ -133,7 +150,9 @@ public class WikiProviderTests
             Task.FromResult<IReadOnlyList<WikiSearchHit>>(hits);
 
         public Task<IReadOnlyList<WikiSection>> GetSectionsAsync(string pageTitle, CancellationToken ct) =>
-            Task.FromResult(Sections);
+            SectionsFailure is { } failure
+                ? Task.FromException<IReadOnlyList<WikiSection>>(failure)
+                : Task.FromResult(Sections);
 
         public Task<string?> GetSectionHtmlAsync(string pageTitle, int sectionIndex, CancellationToken ct) =>
             Task.FromResult<string?>($"<p>section {sectionIndex} of {pageTitle}</p>");

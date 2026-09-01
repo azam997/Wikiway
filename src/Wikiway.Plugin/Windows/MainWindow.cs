@@ -131,24 +131,25 @@ public partial class MainWindow : Window, IDisposable
 
     public override void Draw()
     {
-        plugin.QuestProgress.RefreshIfStale();
-        plugin.Teleport.RefreshIfStale();
-
-        if (queuedNavigation is { } nav)
-        {
-            queuedNavigation = null;
-            SubmitQuery(nav.Query, nav.Category);
-        }
-
-        if (Active.PendingScroll == null)
-            Active.ScrollY = ImGui.GetScrollY();
-
-        DrawBrandStrip();
-        DrawCategoryStrip();
-
-        ImGui.PushID(categoryIndex);
+        var root = ImGuiUnwind.Mark();
         try
         {
+            plugin.QuestProgress.RefreshIfStale();
+            plugin.Teleport.RefreshIfStale();
+
+            if (queuedNavigation is { } nav)
+            {
+                queuedNavigation = null;
+                SubmitQuery(nav.Query, nav.Category);
+            }
+
+            if (Active.PendingScroll == null)
+                Active.ScrollY = ImGui.GetScrollY();
+
+            DrawBrandStrip();
+            DrawCategoryStrip();
+
+            ImGui.PushID(categoryIndex);
             if (Active.PendingScroll is { } scrollY)
             {
                 // SetScrollY clamps against ScrollMax from the previous frame,
@@ -178,18 +179,19 @@ public partial class MainWindow : Window, IDisposable
                 DrawIdleState();
             else
                 DrawResults(Active.Response);
+            ImGui.PopID();
         }
         catch (Exception e)
         {
-            // Dalamud catches draw exceptions, but recovering here keeps the
-            // window alive; dropping the response removes whatever crashed it.
+            // Dalamud would catch this too, but it swaps the window for an
+            // error panel until the user retries; recovering here keeps it
+            // alive, and dropping the response removes whatever crashed it.
+            // Neither catch pops what was pushed before the throw, hence the
+            // explicit unwind - see ImGuiUnwind.
             Plugin.Log.Error(e, "Main window draw failed; dropping the current result view.");
             Active.Response = null;
             Active.Error ??= "something went wrong drawing results - run the search again";
-        }
-        finally
-        {
-            ImGui.PopID();
+            ImGuiUnwind.To(root);
         }
     }
 

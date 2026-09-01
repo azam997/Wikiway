@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Plugin.Ipc;
 using Dalamud.Plugin.Ipc.Exceptions;
@@ -75,6 +76,11 @@ internal sealed class TeleportService
         {
             Plugin.Log.Warning(e, "Teleport IPC call failed.");
         }
+        catch (Exception e)
+        {
+            // This is a draw-loop click handler; nothing may escape it.
+            Plugin.Log.Error(e, "Teleport call failed unexpectedly.");
+        }
     }
 
     // False only when the gate has no provider; the provider's own result is
@@ -89,6 +95,15 @@ internal sealed class TeleportService
         catch (IpcNotReadyError)
         {
             return false;
+        }
+        catch (TargetInvocationException e)
+        {
+            // Dalamud calls the provider through DynamicInvoke and wraps
+            // nothing, so a throw inside Teleporter or Lifestream arrives as
+            // this rather than as an IpcError. The provider exists, so the
+            // next gate is not tried.
+            Plugin.Log.Warning(e.InnerException ?? e, "Teleport provider threw.");
+            return true;
         }
     }
 }

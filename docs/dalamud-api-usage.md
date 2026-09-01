@@ -4,22 +4,23 @@ This doc outlines every place Wikiway touches the Dalamud API or FFXIV game memo
 
 ## Service injection
 
-All Dalamud services arrive via `[PluginService]` static properties on `Plugin` (`src/Wikiway.Plugin/Plugin.cs:26-35`): `IDalamudPluginInterface`, `ICommandManager`, `IDataManager`, `IGameGui`, `IPluginLog`, `IContextMenu`, `IClientState`, `INotificationManager`, `ITextureProvider`, `IAetheryteList`. Everything below reaches them as `Plugin.<Service>`.
+All Dalamud services arrive via `[PluginService]` static properties on `Plugin` (`src/Wikiway.Plugin/Plugin.cs:27-36`): `IDalamudPluginInterface`, `ICommandManager`, `IDataManager`, `IGameGui`, `IPluginLog`, `IContextMenu`, `IClientState`, `INotificationManager`, `ITextureProvider`, `IAetheryteList`. Everything below reaches them as `Plugin.<Service>`.
 
 ## IDalamudPluginInterface
 
 | Call | Location | Why |
 |---|---|---|
-| `GetPluginConfig()` | `Plugin.cs:61` | Load the saved `Configuration` at startup. |
-| `UiBuilder.FontAtlas` | `Plugin.cs:65` | Hand the atlas to `Fonts` so the plugin can build its own font sizes. |
-| `GetPluginConfigDirectory()` | `Plugin.cs:68` | Root the on-disk wiki response cache under the plugin's config dir. |
-| `UiBuilder.Draw += / -=` | `Plugin.cs:143`, `Plugin.cs:152` | Drive `WindowSystem.Draw` every frame (also the plugin's main-thread anchor). |
-| `UiBuilder.OpenMainUi += / -=` | `Plugin.cs:144`, `Plugin.cs:153` | Open the main window from the plugin installer's button. |
-| `UiBuilder.OpenConfigUi += / -=` | `Plugin.cs:145`, `Plugin.cs:154` | Open the settings window from the installer's cog. |
+| `GetPluginConfig()` | `Plugin.cs:205` | Load the saved `Configuration` at startup, inside a try/catch: Dalamud deserializes with no error handling of its own, so an unreadable file falls back to defaults instead of failing the constructor. |
+| `ConfigFile` | `Plugin.cs:219` | Copy an unreadable config file to `.corrupt` before the next save replaces it with defaults. |
+| `UiBuilder.FontAtlas` | `Plugin.cs:68` | Hand the atlas to `Fonts` so the plugin can build its own font sizes. |
+| `GetPluginConfigDirectory()` | `Plugin.cs:71` | Root the on-disk wiki response cache under the plugin's config dir. |
+| `UiBuilder.Draw += / -=` | `Plugin.cs:146`, `Plugin.cs:167` | Drive `WindowSystem.Draw` every frame (also the plugin's main-thread anchor). |
+| `UiBuilder.OpenMainUi += / -=` | `Plugin.cs:147`, `Plugin.cs:168` | Open the main window from the plugin installer's button. |
+| `UiBuilder.OpenConfigUi += / -=` | `Plugin.cs:148`, `Plugin.cs:169` | Open the settings window from the installer's cog. |
 | `SavePluginConfig(this)` | `Configuration.cs:25` | Persist settings whenever a config value changes. |
-| `AssemblyLocation.DirectoryName` | `MainWindow.cs:197` | Locate the bundled `images/logo64.png` next to the plugin assembly. |
-| `GetIpcSubscriber<uint, byte, bool>("Teleport")` / `("Lifestream.Teleport")` | `GameIntegration/TeleportService.cs:22`, `:24` | Subscribe to the teleport gates the Teleporter and Lifestream plugins provide (see the IPC section). Subscribing to an absent gate is legal; only invoking it throws. |
-| `InstalledPlugins` (`IExposedPlugin.IsLoaded`, `.InternalName`) | `TeleportService.cs:40` | Decide whether a Teleport button can appear at all: one of the two providers must be loaded. Re-read every ~2s from the draw loop, not per button. |
+| `AssemblyLocation.DirectoryName` | `MainWindow.cs:199` | Locate the bundled `images/logo64.png` next to the plugin assembly. |
+| `GetIpcSubscriber<uint, byte, bool>("Teleport")` / `("Lifestream.Teleport")` | `GameIntegration/TeleportService.cs:23`, `:25` | Subscribe to the teleport gates the Teleporter and Lifestream plugins provide (see the IPC section). Subscribing to an absent gate is legal; only invoking it throws. |
+| `InstalledPlugins` (`IExposedPlugin.IsLoaded`, `.InternalName`) | `TeleportService.cs:41` | Decide whether a Teleport button can appear at all: one of the two providers must be loaded. Re-read every ~2s from the draw loop, not per button. |
 
 `Configuration` implements `IPluginConfiguration` (`Configuration.cs:7`) so Dalamud can serialize it.
 
@@ -29,22 +30,24 @@ Wikiway provides no IPC; it only consumes two teleport gates, both `Func<uint ae
 
 | Call | Location | Why |
 |---|---|---|
-| `ICallGateSubscriber<uint, byte, bool>.InvokeFunc(id, 0)` | `TeleportService.cs:86` | Ask the provider to teleport to a result's nearest aetheryte. Teleporter's `Teleport` gate is tried first, then Lifestream's `Lifestream.Teleport` (gate name and signature verified by reflection over Lifestream's shipped assembly - EzIPC prefixes the method name with the plugin name). |
-| `catch (IpcNotReadyError)` | `TeleportService.cs:89` | The gate has no provider; fall through to the next gate, and toast if neither is present. |
-| `catch (IpcError)` | `TeleportService.cs:74` | Any other IPC failure (type mismatch after a provider update) is logged, never rethrown into the draw loop. |
+| `ICallGateSubscriber<uint, byte, bool>.InvokeFunc(id, 0)` | `TeleportService.cs:92` | Ask the provider to teleport to a result's nearest aetheryte. Teleporter's `Teleport` gate is tried first, then Lifestream's `Lifestream.Teleport` (gate name and signature verified by reflection over Lifestream's shipped assembly - EzIPC prefixes the method name with the plugin name). |
+| `catch (IpcNotReadyError)` | `TeleportService.cs:95` | The gate has no provider; fall through to the next gate, and toast if neither is present. |
+| `catch (TargetInvocationException)` | `TeleportService.cs:99` | Dalamud invokes the provider through `DynamicInvoke` and wraps nothing, so a throw inside Teleporter or Lifestream arrives as this, not as an `IpcError`. Logged; the provider counts as present, so the next gate is not tried. |
+| `catch (IpcError)` | `TeleportService.cs:75` | Any other IPC failure (type mismatch after a provider update) is logged, never rethrown into the draw loop. |
+| `catch (Exception)` | `TeleportService.cs:79` | Last resort: this runs inside a draw-loop click handler and nothing may escape into the frame. |
 
 ## ICommandManager
 
 | Call | Location | Why |
 |---|---|---|
-| `AddHandler(name, new CommandInfo(OnCommand))` | `Plugin.cs:187` (called for `/wikiway`, `/wway`, `/ww` at `Plugin.cs:137-141`) | Register the chat commands, handle conflicts |
-| `RemoveHandler` ×3 | `Plugin.cs:156-158` | Unregister on dispose. |
+| `AddHandler(name, new CommandInfo(OnCommand))` | `Plugin.cs:233` (called for `/wikiway`, `/wway`, `/ww` at `Plugin.cs:140-144`) | Register the chat commands, handle conflicts |
+| `RemoveHandler` ×3 | `Plugin.cs:171-173` | Unregister on dispose. |
 
 ## IDataManager (Lumina sheets)
 
 | Call | Location | Why |
 |---|---|---|
-| `DataManager.GameData` | `Plugin.cs:82` | Hand the Lumina handle to `LuminaGameDataStore`. Every sheet read in `Wikiway.GameData` (items, NPCs, quests, duties, acquisition sources - shops, gathering, fishing, GC seal shops, retainer ventures - the collection kinds: mounts/minions, orchestrion rolls, Triple Triad cards, and emotes with their teaching items via the reverse ItemAction index - the item usage block: reverse ingredient counts, custom deliveries, collectable turn-ins, treasure map spots, materia stats, and food/medicine effects - the standalone kinds: sightseeing vistas, hunt marks, per-zone aether current quests, FATEs, and levequests - plus the nearest-aetheryte join: `MapMarker` subrows keyed by `Map.MapMarkerRange` for aetheryte and aethernet-shard positions, `TerritoryType.Aetheryte` as the per-zone fallback) flows through this. |
+| `DataManager.GameData` | `Plugin.cs:85` | Hand the Lumina handle to `LuminaGameDataStore`. Every sheet read in `Wikiway.GameData` (items, NPCs, quests, duties, acquisition sources - shops, gathering, fishing, GC seal shops, retainer ventures - the collection kinds: mounts/minions, orchestrion rolls, Triple Triad cards, and emotes with their teaching items via the reverse ItemAction index - the item usage block: reverse ingredient counts, custom deliveries, collectable turn-ins, treasure map spots, materia stats, and food/medicine effects - the standalone kinds: sightseeing vistas, hunt marks, per-zone aether current quests, FATEs, and levequests - plus the nearest-aetheryte join: `MapMarker` subrows keyed by `Map.MapMarkerRange` for aetheryte and aethernet-shard positions, `TerritoryType.Aetheryte` as the per-zone fallback) flows through this. |
 | `GetExcelSheet<Quest>()` | `GameIntegration/ActiveQuestReader.cs:32` | Resolve journal quest ids (`0x10000 + QuestId`) to display names and levels. |
 | `GetExcelSheet<Quest>()` | `GameIntegration/QuestProgressTracker.cs:59` | Enumerate all quest row ids once, to scan the completion bitmap against. |
 
@@ -66,7 +69,7 @@ The only game-struct type used is `FFXIVClientStructs.FFXIV.Client.Game.QuestMan
 
 | Call | Location | Why |
 |---|---|---|
-| `IsLoggedIn` | `ActiveQuestReader.cs:18`, `QuestProgressTracker.cs:53`, `MapLinkOpener.cs:17`, `TeleportService.cs:44`, `:59` | Skip journal/progress reads while logged out (gating fails open); skip map-link opens at character select and the DC-travel lobby, where the map agent isn't initialized; treat the aetheryte list as empty and refuse teleport calls while logged out. |
+| `IsLoggedIn` | `ActiveQuestReader.cs:18`, `QuestProgressTracker.cs:53`, `MapLinkOpener.cs:17`, `TeleportService.cs:45`, `:60` | Skip journal/progress reads while logged out (gating fails open); skip map-link opens at character select and the DC-travel lobby, where the map agent isn't initialized; treat the aetheryte list as empty and refuse teleport calls while logged out. |
 | `TerritoryChanged += / -=` | `GameIntegration/SoloDutyNotifier.cs:21`, `:26` | Detect zoning into a solo duty (fires at zone-in, before the commence dialog unlike `IDutyState.DutyStarted`). |
 | `Logout += / -=` | `Windows/MainWindow.cs:64`, `:69` | Clear per-character spoiler reveals; the next login may be an alt. |
 
@@ -74,7 +77,7 @@ The only game-struct type used is `FFXIVClientStructs.FFXIV.Client.Game.QuestMan
 
 | Call | Location | Why |
 |---|---|---|
-| `Length` + indexer, `IAetheryteEntry.AetheryteId` | `TeleportService.cs:46-50` | Snapshot the aetherytes the character has attuned to (the Teleport window's list) every ~2s from the draw loop. A Teleport button only appears for attuned aetherytes, so a click can't fail on an unvisited one. Housing entries share their district aetheryte's id and are not distinguished. |
+| `Length` + indexer, `IAetheryteEntry.AetheryteId` | `TeleportService.cs:47-51` | Snapshot the aetherytes the character has attuned to (the Teleport window's list) every ~2s from the draw loop. A Teleport button only appears for attuned aetherytes, so a click can't fail on an unvisited one. Housing entries share their district aetheryte's id and are not distinguished. |
 
 ## IContextMenu
 
@@ -97,24 +100,33 @@ The only game-struct type used is `FFXIVClientStructs.FFXIV.Client.Game.QuestMan
 |---|---|---|
 | `AddNotification` + `Click` + `DismissNow` | `SoloDutyNotifier.cs:41`, `:49`, `:28`/`:53`/`:57` | Solo-duty toast; click opens the duty lookup, a new toast dismisses an overlapped predecessor, and dispose dismisses so a stale toast can't click into a disposed window. |
 | `AddNotification` | `Windows/ConfigWindow.cs:180` | Confirm "Clear wiki cache" completed (async, so a toast rather than inline text). |
-| `AddNotification` | `TeleportService.cs:66` | Tell the user a Teleport click found no provider (only reachable if a provider unloads between the button appearing and the click). |
+| `AddNotification` | `TeleportService.cs:67` | Tell the user a Teleport click found no provider (only reachable if a provider unloads between the button appearing and the click). |
 
 ## ITextureProvider
 
 | Call | Location | Why |
 |---|---|---|
-| `GetFromFile(LogoPath).GetWrapOrDefault()` | `MainWindow.cs:205` | Draw the bundled logo in the brand strip; skipped gracefully if missing. |
+| `GetFromFile(LogoPath).GetWrapOrDefault()` | `MainWindow.cs:207` | Draw the bundled logo in the brand strip; skipped gracefully if missing. |
 | `GetFromGameIcon(new GameIconLookup(icon)).GetWrapOrEmpty()` | `Windows/MainWindow.Results.cs:2326` | Render game icons (items, mounts, minions, and the teaching items on orchestrion/Triple Triad rows) in result rows. |
 
 ## IPluginLog
 
-Warnings and errors only: unreadable stored config (`Plugin.cs:64`), cache-store warnings (`Plugin.cs:69`), warm-up failure (`Plugin.cs:120`), command-name collision (`Plugin.cs:188`), draw-loop crash recovery (`MainWindow.cs:186`), failed search (`MainWindow.cs:521`), unresolved `IsQuestComplete` signature (`QuestProgressTracker.cs:43`), teleport IPC failure (`TeleportService.cs:76`).
+Warnings and errors only: unreadable stored config (`Plugin.cs:67`, `:209`, `:225`), cache-store warnings (`Plugin.cs:72`), warm-up failure (`Plugin.cs:123`), command-name collision (`Plugin.cs:234`), draw-loop crash recovery (`MainWindow.cs:191`), failed search (`MainWindow.cs:523`), unresolved `IsQuestComplete` signature (`QuestProgressTracker.cs:43`), teleport IPC or provider failure (`TeleportService.cs:77`, `:82`, `:105`).
 
 ## Windowing (Dalamud.Interface.Windowing)
 
 | Usage | Location | Why |
 |---|---|---|
-| `WindowSystem("Wikiway")` + `AddWindow` ×3 + `RemoveAllWindows` | `Plugin.cs:47`, `:127-129`, `:160` | Standard Dalamud window management for the main, settings, and tutorial windows. |
+| `WindowSystem("Wikiway")` + `AddWindow` ×3 + `RemoveAllWindows` | `Plugin.cs:48`, `:130-132`, `:175` | Standard Dalamud window management for the main, settings, and tutorial windows. |
 | `MainWindow : Window` (with `SizeConstraints`, `OnOpen`, `PreDraw`/`PostDraw` theme push/pop) | `MainWindow.cs:19`, `:56`, `:93`, `:95-130` | Main search UI. |
 | `ConfigWindow : Window` | `ConfigWindow.cs:12` | Settings UI. |
 | `TutorialWindow : Window` (`OnClose` marks the tour seen) | `TutorialWindow.cs:8`, `:58` | First-run tour. |
+
+## ImGui internals (Dalamud.Bindings.ImGui.ImGuiP)
+
+ImGui drawing itself is out of scope here, but two internal-API calls are load-bearing for crash safety:
+
+| Call | Location | Why |
+|---|---|---|
+| `ImGuiP.GetCurrentWindow()` | `Ui/ImGuiUnwind.cs:16`, `:25` | Mark the window `MainWindow.Draw` was entered in, and find popups or children still open when it throws. |
+| `ImGuiP.ErrorCheckEndWindowRecover(null)` | `Ui/ImGuiUnwind.cs:29`, `:36` | Pop every colour, style var, font, group, tab bar and ID pushed since the window began. Dalamud's `WindowHost` catches a throwing `Draw` but restores nothing, and its ImGui build never runs end-of-frame recovery, so without this the strays would leak into every window drawn afterwards, other plugins included, until reload. Called from `MainWindow.cs:194`. |

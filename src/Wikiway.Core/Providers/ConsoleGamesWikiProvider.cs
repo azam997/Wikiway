@@ -114,6 +114,16 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider
             // here shouldn't fail the whole search.
             return null;
         }
+        catch (OperationCanceledException)
+        {
+            // The token is the orchestrator's per-provider budget as much as
+            // the caller's cancel, and after slow section fetches that budget
+            // can run out with the page hits already in hand; letting it
+            // escape reports the whole provider as timed out and discards
+            // them. A caller cancel loses nothing: the response of a cancelled
+            // search is never read.
+            return null;
+        }
     }
 
     private static string Truncate(string text, int max)
