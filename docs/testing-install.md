@@ -1,5 +1,7 @@
 # Installing the test version
 
+Custom repo was used to distribute a few copies to friends for testing and use. I will deprecate custom repository use if approved.
+
 1. Open Dalamud settings: type `/xlsettings` in chat.
 2. Go to the Experimental tab.
 3. Under Custom Plugin Repositories, paste this URL into the empty box and press the + button:

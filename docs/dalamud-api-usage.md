@@ -2,6 +2,8 @@
 
 This doc outlines every place Wikiway touches the Dalamud API or FFXIV game memory (FFXIVClientStructs), with where and why. Only `Wikiway.Plugin` touches either; `Wikiway.Core` and `Wikiway.GameData` are Dalamud-free (`Wikiway.GameData` reads sheets through the Lumina `GameData` handle that `Plugin` passes in). Line numbers are current as of 2026-09-01. This does not include imGui.
 
+AI assisted in generation, used as a tool to help myself keep track of and review stress points.
+
 ## Service injection
 
 All Dalamud services arrive via `[PluginService]` static properties on `Plugin` (`src/Wikiway.Plugin/Plugin.cs:27-36`): `IDalamudPluginInterface`, `ICommandManager`, `IDataManager`, `IGameGui`, `IPluginLog`, `IContextMenu`, `IClientState`, `INotificationManager`, `ITextureProvider`, `IAetheryteList`. Everything below reaches them as `Plugin.<Service>`.

@@ -79,9 +79,7 @@ The canary suite is the early-warning system for things that break under us:
 ## Packaging
 
 `dotnet build src\Wikiway.Plugin -c Release` produces the distributable zip at
-`src\Wikiway.Plugin\bin\Release\Wikiway\latest.zip` via DalamudPackager. Clean
-the bin folder first if you've built Release before - stale packager output
-gets swept into the zip otherwise.
+`src\Wikiway.Plugin\bin\Release\Wikiway\latest.zip` via DalamudPackager.
 
 ## Layout
 
