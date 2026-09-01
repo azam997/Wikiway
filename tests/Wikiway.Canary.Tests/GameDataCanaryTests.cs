@@ -39,6 +39,14 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.True(Count(names, EntityKind.Achievement) > 2_000, "achievement names collapsed");
         Assert.True(Count(names, EntityKind.Unlockable) > 150, "unlockable names collapsed");
         Assert.True(Count(names, EntityKind.Gatherable) > 500, "gatherable names collapsed");
+        Assert.True(Count(names, EntityKind.Orchestrion) > 800, "orchestrion names collapsed");
+        Assert.True(Count(names, EntityKind.TripleTriadCard) > 400, "triple triad card names collapsed");
+        Assert.True(Count(names, EntityKind.Emote) > 150, "emote names collapsed");
+        Assert.True(Count(names, EntityKind.Vista) > 300, "vista names collapsed");
+        Assert.True(Count(names, EntityKind.HuntMark) > 250, "hunt mark names collapsed");
+        Assert.True(Count(names, EntityKind.AetherCurrentZone) > 50, "aether current zone names collapsed");
+        Assert.True(Count(names, EntityKind.Fate) > 1_500, "fate names collapsed");
+        Assert.True(Count(names, EntityKind.Leve) > 1_500, "leve names collapsed");
     }
 
     [Fact]
@@ -94,7 +102,7 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         {
             Assert.False(string.IsNullOrEmpty(r.CraftType));
             Assert.InRange(r.Level, 10, 20);
-            Assert.Contains(r.Ingredients, i => i.Contains("Iron Ore"));
+            Assert.Contains(r.Ingredients, i => i.Name.Contains("Iron Ore") && i.Amount > 0);
         });
 
         var located = item.Acquisition.Vendors.Where(v => v.Location != null).ToList();
@@ -122,7 +130,8 @@ public class GameDataCanaryTests(GameDataFixture fixture)
             Assert.NotEmpty(e.Costs);
         });
         Assert.Contains(item.Acquisition.Exchanges,
-            e => e.Costs.Any(c => c.Contains("Steel Amalj'ok", StringComparison.OrdinalIgnoreCase)));
+            e => e.Costs.Any(offer => offer.Any(p =>
+                p.Name.Contains("Steel Amalj'ok", StringComparison.OrdinalIgnoreCase) && p.Amount > 0)));
     }
 
     // Pins the gathering chain: GatheringItem -> GatheringPointBase ->
@@ -150,6 +159,165 @@ public class GameDataCanaryTests(GameDataFixture fixture)
             g.Location is { } loc &&
             loc.ZoneName.Contains("Thanalan", StringComparison.OrdinalIgnoreCase) &&
             loc.MapX is > 1 and < 45 && loc.MapY is > 1 and < 45);
+    }
+
+    // Pins the master-book join: Recipe.SecretRecipeBook -> name + book item.
+    // Heavy Wolfram gear has required Master Armorer I since 2.2, and the book
+    // itself is an item, so its acquisition resolves like any other.
+    [Fact]
+    public void HeavyWolframHelmRecipeCarriesItsMasterBook()
+    {
+        var store = fixture.Store();
+        var names = store.GetAllNames();
+
+        var helm = names.FirstOrDefault(n => n.Kind == EntityKind.Item && n.Name == "heavy wolfram helm");
+        Assert.NotNull(helm);
+
+        var item = store.GetItem(helm.RowId);
+        Assert.NotNull(item?.Acquisition);
+        Assert.NotEmpty(item.Acquisition.Recipes);
+        Assert.All(item.Acquisition.Recipes, r => Assert.Equal("Master Armorer I", r.MasterBook));
+
+        Assert.Contains(names, n => n.Kind == EntityKind.Item && n.Name == "master armorer i");
+    }
+
+    // Pins the timed-node join and the Eorzean clock math: GatheringPoint ->
+    // GatheringPointTransient -> GatheringRarePopTimeTable. Spruce Log's
+    // unspoiled node has popped at 9:00 ET since 2.0.
+    [Fact]
+    public void SpruceLogNodeCarriesItsUnspoiledWindow()
+    {
+        var store = fixture.Store();
+
+        var log = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Gatherable && n.Name == "spruce log");
+        Assert.NotNull(log);
+
+        var item = store.GetItem(log.RowId);
+        Assert.NotNull(item?.Acquisition);
+        Assert.Contains(item.Acquisition.Gathering, g => g.TimeWindow == "Unspoiled · 9:00-12:00 ET");
+    }
+
+    // Same join, ephemeral branch (EphemeralStartTime/EndTime). Windtea Leaves
+    // has been the 16:00 ET Sea of Clouds ephemeral node since Heavensward.
+    [Fact]
+    public void WindteaLeavesNodeCarriesItsEphemeralWindow()
+    {
+        var store = fixture.Store();
+
+        var leaves = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Gatherable && n.Name == "windtea leaves");
+        Assert.NotNull(leaves);
+
+        var item = store.GetItem(leaves.RowId);
+        Assert.NotNull(item?.Acquisition);
+        Assert.Contains(item.Acquisition.Gathering, g => g.TimeWindow == "Ephemeral · 16:00-20:00 ET");
+    }
+
+    // Pins the fishing-spot reverse index and the map-pixel coord conversion:
+    // FishingSpot.X/Z are map-image pixels, not world units, so a formula
+    // regression would drift these coords off the Limsa docks. The Lominsan
+    // Anchovy has swum there since 2013, and its notebook prose rides along.
+    [Fact]
+    public void LominsanAnchovyFishingResolvesFromSheets()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(4870);
+        Assert.NotNull(item);
+        Assert.Equal("Lominsan Anchovy", item.Name);
+        Assert.NotNull(item.Acquisition);
+
+        Assert.InRange(item.Acquisition.Fishing.Count, 5, 12);
+        Assert.All(item.Acquisition.Fishing, s => Assert.False(s.Spearfishing));
+        Assert.Contains(item.Acquisition.Fishing, s =>
+            s.SpotName == "Limsa Lominsa Lower Decks" &&
+            s.Location is { } loc &&
+            loc.MapX is > 7f and < 9f && loc.MapY is > 11f and < 13f);
+        Assert.Contains("Qiqirn", item.Acquisition.FishingNote);
+    }
+
+    // Spearfishing rides a different chain: SpearfishingItem row ids sit in
+    // the base's Item slots and the notebook row carries the gig spot. The
+    // Wentletrap has been gigged in the Ruby Sea since Stormblood.
+    [Fact]
+    public void WentletrapSpearfishingResolvesFromSheets()
+    {
+        var store = fixture.Store();
+
+        var wentletrap = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Item && n.Name == "wentletrap");
+        Assert.NotNull(wentletrap);
+
+        var item = store.GetItem(wentletrap.RowId);
+        Assert.NotNull(item?.Acquisition);
+        Assert.Contains(item.Acquisition.Fishing, s =>
+            s.Spearfishing &&
+            s.Level >= 60 &&
+            s.Location is { } loc &&
+            loc.ZoneName.Contains("Ruby Sea", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Pins the seal-shop chain: GCScripShopItem -> category -> company ->
+    // GCShop handler (0x160000 block) -> quartermaster NPC. All three
+    // companies have sold Ventures at 200 seals since retainers got ambitions.
+    [Fact]
+    public void VentureSealVendorsResolveAllThreeQuartermasters()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetAllNames()
+            .Where(n => n.Kind == EntityKind.Item && n.Name == "venture")
+            .Select(n => store.GetItem(n.RowId))
+            .FirstOrDefault(i => i?.Acquisition?.SealVendors.Count > 0);
+        Assert.NotNull(item);
+
+        var vendors = item.Acquisition!.SealVendors;
+        Assert.Equal(3, vendors.Count);
+        Assert.All(vendors, v =>
+        {
+            Assert.Contains("Quartermaster", v.NpcName);
+            Assert.Equal(200u, v.SealCost);
+            Assert.NotNull(v.Location);
+        });
+    }
+
+    // Rank names ride per-company text sheets keyed by GrandCompany row id
+    // (1 Maelstrom -> Limsa, 2 Adder -> Gridania, 3 Flames -> Ul'dah); the
+    // Maelstrom-only barding pins the pairing via its "Storm ..." rank.
+    [Fact]
+    public void RankGatedSealItemCarriesItsCompanyRankName()
+    {
+        var store = fixture.Store();
+
+        var barding = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Item && n.Name == "lominsan half barding");
+        Assert.NotNull(barding);
+
+        var item = store.GetItem(barding.RowId);
+        Assert.NotNull(item?.Acquisition);
+
+        var vendor = Assert.Single(item.Acquisition.SealVendors);
+        Assert.Equal("Storm Quartermaster", vendor.NpcName);
+        Assert.StartsWith("Storm", vendor.RequiredRank);
+    }
+
+    // Pins the venture join: RetainerTaskNormal reverse index -> RetainerTask
+    // level and class. Iron Ore has been a level 14 MIN venture with 15-50
+    // yield bands since retainers learned to swing a pickaxe.
+    [Fact]
+    public void IronOreVentureResolvesFromSheets()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(5111);
+        Assert.NotNull(item?.Acquisition);
+
+        var venture = Assert.Single(item.Acquisition.Ventures);
+        Assert.Equal("MIN", venture.Category);
+        Assert.Equal(14, venture.Level);
+        Assert.Equal("15-50", venture.Quantities);
+        Assert.InRange(venture.VentureCost, 1u, 2u);
     }
 
     // Pins the curated field-area unlock table: Bozja carries no quest-typed
@@ -752,6 +920,578 @@ public class GameDataCanaryTests(GameDataFixture fixture)
         Assert.InRange(equippable, 20_000, 60_000);
 
         Assert.Null(store.GetItem(5057)!.Equipment);
+    }
+
+    // Pins the reverse ItemAction join for mounts (action type 1322, Data[0] =
+    // Mount row) and the MountTransient lore text. Aithon has been taught by
+    // its whistle since 2.x.
+    [Fact]
+    public void AithonMountResolvesItsWhistleAndLore()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames().FirstOrDefault(n => n.Kind == EntityKind.Mount && n.Name == "aithon");
+        Assert.NotNull(entry);
+
+        var mount = store.GetMount(entry.RowId);
+        Assert.NotNull(mount);
+        Assert.NotNull(mount.TeachingItem);
+        Assert.Equal("Aithon Whistle", mount.TeachingItem.Name);
+        Assert.False(string.IsNullOrEmpty(mount.Description));
+    }
+
+    // Pins the minion join (action type 853) plus the CompanionTransient
+    // battle-stat columns, probe-verified 2026-09-01: HP 400, 55/40/3.
+    [Fact]
+    public void WindupCursorMinionCarriesBattleStatsAndItsItem()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames().FirstOrDefault(n => n.Kind == EntityKind.Minion && n.Name == "wind-up cursor");
+        Assert.NotNull(entry);
+
+        var minion = store.GetMinion(entry.RowId);
+        Assert.NotNull(minion);
+        Assert.NotNull(minion.TeachingItem);
+        Assert.Equal("Wind-up Cursor", minion.TeachingItem.Name);
+        Assert.NotNull(minion.BattleStats);
+        Assert.Equal(400, minion.BattleStats.Hp);
+        Assert.Equal(55, minion.BattleStats.Attack);
+        Assert.Equal(40, minion.BattleStats.Defense);
+        Assert.Equal(3, minion.BattleStats.Speed);
+        Assert.Equal("The Finger", minion.BattleStats.SpecialAction);
+        Assert.False(string.IsNullOrEmpty(minion.Description));
+    }
+
+    // Orchestrion rolls join through Item.AdditionalData (action type 25183),
+    // not Data[0]. Row 1 has been "A Cold Wind" since the orchestrion shipped.
+    [Fact]
+    public void AColdWindOrchestrionRollResolvesFromItsItem()
+    {
+        var store = fixture.Store();
+
+        var roll = store.GetOrchestrion(1);
+        Assert.NotNull(roll);
+        Assert.Equal("A Cold Wind", roll.Name);
+        Assert.NotNull(roll.TeachingItem);
+        Assert.Equal("A Cold Wind Orchestrion Roll", roll.TeachingItem.Name);
+        Assert.Contains("MGP", roll.Description);
+        Assert.False(string.IsNullOrEmpty(roll.Category));
+    }
+
+    // Pins TripleTriadCardResident stats and the pack-purchase obtain label
+    // (probe-verified 2026-09-01: 7/5/3/5, sale 300, obtain type 8).
+    [Fact]
+    public void MomodiModiCardCarriesStatsAndPackLabel()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.TripleTriadCard && n.Name == "momodi modi");
+        Assert.NotNull(entry);
+
+        var card = store.GetTripleTriadCard(entry.RowId);
+        Assert.NotNull(card);
+        Assert.Equal(7, card.Top);
+        Assert.Equal(5, card.Bottom);
+        Assert.Equal(3, card.Left);
+        Assert.Equal(5, card.Right);
+        Assert.InRange(card.Stars, 1, 5);
+        Assert.Equal(300u, card.SaleValue);
+        Assert.Contains("purchase", card.ObtainText, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(card.TeachingItem);
+        Assert.Equal("Momodi Modi Card", card.TeachingItem.Name);
+    }
+
+    // NPC-win obtain types carry an ENpcResident in Acquisition and a Level in
+    // Location; the Vanu Vanu card has been won from Mogmill since 3.2.
+    [Fact]
+    public void VanuVanuCardIsWonFromMogmill()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.TripleTriadCard && n.Name == "vanu vanu");
+        Assert.NotNull(entry);
+
+        var card = store.GetTripleTriadCard(entry.RowId);
+        Assert.NotNull(card);
+        Assert.Equal("Mogmill", card.NpcName);
+        Assert.NotNull(card.NpcLocation);
+        Assert.Contains("Churning Mists", card.NpcLocation.ZoneName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Duty-drop obtain types carry a ContentFinderCondition in Acquisition.
+    [Fact]
+    public void SahaginCardDropsInSastasha()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.TripleTriadCard && n.Name == "sahagin");
+        Assert.NotNull(entry);
+
+        var card = store.GetTripleTriadCard(entry.RowId);
+        Assert.NotNull(card);
+        Assert.Contains("Sastasha", card.DutyName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Emote unlock bits (Emote.UnlockLink outside the quest id block) join to
+    // the manual item whose type-2633 ItemAction sets the same bit.
+    [Fact]
+    public void BombDanceEmoteResolvesItsEtiquetteManual()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames().FirstOrDefault(n => n.Kind == EntityKind.Emote && n.Name == "bomb dance");
+        Assert.NotNull(entry);
+
+        var emote = store.GetEmote(entry.RowId);
+        Assert.NotNull(emote);
+        Assert.Equal("/bombdance", emote.Command);
+        Assert.Null(emote.UnlockQuest);
+        Assert.NotNull(emote.TeachingItem);
+        Assert.Equal("Ballroom Etiquette - The Bomb Dance", emote.TeachingItem.Name);
+    }
+
+    // UnlockLink values in the 0x10000 quest block are Quest row ids.
+    [Fact]
+    public void MoogleDanceEmoteUnlocksThroughItsQuest()
+    {
+        var store = fixture.Store();
+
+        var entry = store.GetAllNames().FirstOrDefault(n => n.Kind == EntityKind.Emote && n.Name == "moogle dance");
+        Assert.NotNull(entry);
+
+        var emote = store.GetEmote(entry.RowId);
+        Assert.NotNull(emote);
+        Assert.NotNull(emote.UnlockQuest);
+        Assert.Contains("Piecing Together the Past", emote.UnlockQuest.Name);
+    }
+
+    // The four indirect shop-attachment paths (probed 2026-09-01): a direct
+    // ENpcData handler reaches only ~31% of special shops, the rest hang off
+    // TopicSelect menus, InclusionShop category trees, CustomTalk scripts,
+    // and NPC-keyed FateShops.
+
+    // TopicSelect: Sabina's 0x320002 menu carries the Gordian part shops.
+    [Fact]
+    public void PrototypeGordianArmetReachesSabinaThroughHerTopicMenu()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(11448);
+        Assert.NotNull(item?.Acquisition);
+        Assert.Equal("Prototype Gordian Armet of Fending", item.Name);
+        var sabina = item.Acquisition.Exchanges.FirstOrDefault(e => e.NpcName == "Sabina");
+        Assert.NotNull(sabina);
+        Assert.Contains("Gordian Part Exchange", sabina.ShopName);
+        Assert.NotNull(sabina.Location);
+        Assert.Contains("Idyllshire", sabina.Location.ZoneName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // FateShop rows are keyed by the vendor NPC id itself; the bicolor
+    // gemstone traders have sold Berkanan Sap since 6.0.
+    [Fact]
+    public void BerkananSapResolvesTheGemstoneTraders()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(36261);
+        Assert.NotNull(item?.Acquisition);
+        Assert.True(item.Acquisition.Exchanges.Count >= 3,
+            $"expected 3+ gemstone traders, got {item.Acquisition.Exchanges.Count}");
+        var gadfrid = item.Acquisition.Exchanges.FirstOrDefault(e => e.NpcName == "Gadfrid");
+        Assert.NotNull(gadfrid);
+        Assert.Contains("Sharlayan", gadfrid.Location?.ZoneName ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    // TopicSelect again, at the other end of the game: the Calamity Salvager's
+    // gold chocobo feather page.
+    [Fact]
+    public void AmberDraughtWhistleReachesTheCalamitySalvager()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(12993);
+        Assert.NotNull(item?.Acquisition);
+        Assert.Contains(item.Acquisition.Exchanges,
+            e => e.NpcName.Contains("Calamity Salvager", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // InclusionShop: the scrip-exchange aggregator chains Category ->
+    // InclusionShopSeries subrows -> SpecialShop.
+    [Fact]
+    public void HiCordialResolvesAScripExchangeShop()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(12669);
+        Assert.NotNull(item?.Acquisition);
+        Assert.Contains(item.Acquisition.Exchanges,
+            e => e.ShopName.Contains("Scrip Exchange", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Pins the reverse ingredient index. Iron Ingot has fed 100+ recipes for
+    // years; a collapse here means the ingredient scan broke.
+    [Fact]
+    public void IronIngotUsageCountsItsRecipes()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(5057);
+        Assert.NotNull(item?.Usage);
+        Assert.InRange(item.Usage.UsedInRecipes, 100, 400);
+    }
+
+    // Pins the custom-delivery chain: SatisfactionNpc.SatisfactionNpcParams
+    // SupplyIndex -> SatisfactionSupply subrows -> item. Raven Coal has been a
+    // Kai-Shirr miner turn-in since Shadowbringers.
+    [Fact]
+    public void RavenCoalIsWantedByKaiShirr()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(28199);
+        Assert.NotNull(item?.Usage);
+
+        var delivery = item.Usage.Deliveries.SingleOrDefault(
+            d => d.NpcName.Contains("Kai-Shirr", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(delivery);
+        Assert.Equal("Oh, Beehive Yourself", delivery.UnlockQuest?.Name);
+    }
+
+    // Pins the CollectablesShopItem join and its scrip payout read; the scrip
+    // type itself is not named in the sheets (opaque Currency id), so only the
+    // amount is asserted.
+    [Fact]
+    public void RarefiedRaKaznarOreIsACollectableTurnIn()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(43922);
+        Assert.NotNull(item?.Usage);
+
+        var turnIn = Assert.Single(item.Usage.CollectableTurnIns);
+        Assert.Equal(100, turnIn.LevelMin);
+        Assert.Equal(38, turnIn.MaxScrips);
+    }
+
+    // Pins TreasureHuntRank.ItemName -> TreasureSpot subrows -> Level zones.
+    // Zonureskin maps have dug up 8 sites in each of 6 Shadowbringers zones
+    // since 5.0.
+    [Fact]
+    public void TimewornZonureskinMapListsItsZones()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(26745);
+        Assert.NotNull(item?.Usage?.TreasureMap);
+
+        var map = item.Usage.TreasureMap;
+        Assert.Equal(8, map.PartySize);
+        Assert.Equal(6, map.Zones.Count);
+        Assert.All(map.Zones, z => Assert.Equal(8, z.SpotCount));
+        Assert.Contains(map.Zones, z => z.ZoneName == "Lakeland");
+        Assert.Contains(map.Zones, z => z.ZoneName == "The Tempest");
+    }
+
+    // Pins the ItemFood read (status + duration from ItemAction.Data, stats
+    // with relative caps and HQ values from the shared ItemFood row).
+    [Fact]
+    public void BoiledEggCarriesItsFoodStats()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(4650);
+        Assert.NotNull(item?.Food);
+        Assert.Equal("Well Fed", item.Food.StatusName);
+        Assert.Equal(1800, item.Food.DurationSeconds);
+        Assert.Equal(3, item.Food.ExpBonusPercent);
+
+        var crit = item.Food.Stats.Single(s => s.Name == "Critical Hit");
+        Assert.True(crit.Relative);
+        Assert.Equal(8, crit.Value);
+        Assert.Equal(2, crit.Max);
+        Assert.Equal(10, crit.HqValue);
+        Assert.Equal(3, crit.HqMax);
+
+        var vitality = item.Food.Stats.Single(s => s.Name == "Vitality");
+        Assert.False(vitality.Relative);
+        Assert.Equal(1, vitality.Value);
+    }
+
+    // Medicine variant: short Medicated buff, no EXP bonus.
+    [Fact]
+    public void TinctureOfStrengthIsAShortMedicatedBuff()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(27786);
+        Assert.NotNull(item?.Food);
+        Assert.Equal("Medicated", item.Food.StatusName);
+        Assert.Equal(30, item.Food.DurationSeconds);
+        Assert.Equal(0, item.Food.ExpBonusPercent);
+
+        var strength = Assert.Single(item.Food.Stats);
+        Assert.Equal("Strength", strength.Name);
+        Assert.True(strength.Relative);
+        Assert.Equal(94, strength.Max);
+        Assert.Equal(117, strength.HqMax);
+    }
+
+    // Pins the Materia sheet reverse (stat name + per-grade value).
+    [Fact]
+    public void SavageAimMateriaNineCarriesItsMateriaTag()
+    {
+        var store = fixture.Store();
+
+        var item = store.GetItem(33919);
+        Assert.NotNull(item?.Usage);
+        Assert.Equal("Critical Hit +12", item.Usage.MateriaTag);
+    }
+
+    // Pins the Adventure sheet reads end to end: hint vs lore column pick,
+    // Level -> map coords, emote text command, and the ET window rendering
+    // (800-1159 in the sheet is the 8:00-12:00 window).
+    [Fact]
+    public void BarracudaPiersVistaResolvesFromSheets()
+    {
+        var store = fixture.Store();
+
+        var vista = store.GetVista(2162688);
+        Assert.NotNull(vista);
+        Assert.Equal("Barracuda Piers", vista.Name);
+        Assert.Contains("warships", vista.Hint, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Crimson Fleet", vista.Lore);
+        Assert.Equal("Limsa Lominsa", vista.Region);
+        Assert.Equal("/lookout", vista.Emote);
+        Assert.Equal("8:00-12:00 ET", vista.TimeWindow);
+
+        Assert.NotNull(vista.Location);
+        Assert.Contains("Limsa", vista.Location.ZoneName, StringComparison.OrdinalIgnoreCase);
+        Assert.InRange(vista.Location.MapX, 9, 11);
+        Assert.InRange(vista.Location.MapY, 7, 9);
+    }
+
+    // A window wrapping midnight (The Astalicia, 1800-459) must render as
+    // 18:00-5:00, not fold into nonsense.
+    [Fact]
+    public void AstaliciaVistaWindowWrapsMidnight()
+    {
+        var store = fixture.Store();
+
+        var vista = store.GetVista(2162689);
+        Assert.NotNull(vista);
+        Assert.Equal("18:00-5:00 ET", vista.TimeWindow);
+    }
+
+    // Rank byte -> letter (probed: 1=B, 2=A, 3=S) and the hunt-bill zone join.
+    // Only billed marks carry a zone; Laideronnette has been the East Shroud
+    // S rank since 2.0 and sits on no bill.
+    [Fact]
+    public void HuntMarkRanksAndZonesResolveFromSheets()
+    {
+        var store = fixture.Store();
+
+        var laideronnette = store.GetHuntMark(3);
+        Assert.NotNull(laideronnette);
+        Assert.Equal("Laideronnette", laideronnette.Name);
+        Assert.Equal("S", laideronnette.Rank);
+        Assert.Equal("", laideronnette.ZoneName);
+
+        var whiteJoker = store.GetAllNames()
+            .First(n => n.Kind == EntityKind.HuntMark && n.Name == "white joker");
+        var mark = store.GetHuntMark(whiteJoker.RowId);
+        Assert.NotNull(mark);
+        Assert.Equal("B", mark.Rank);
+        Assert.Equal("Central Shroud", mark.ZoneName);
+    }
+
+    // Pins AetherCurrentCompFlgSet -> AetherCurrent.Quest with quest levels
+    // and start-flag locations. Every flying zone since Heavensward grants
+    // five currents from named quests.
+    [Fact]
+    public void KholusiaAetherCurrentsResolveTheirFiveQuests()
+    {
+        var store = fixture.Store();
+
+        var zone = store.GetAllNames()
+            .First(n => n.Kind == EntityKind.AetherCurrentZone && n.Name == "kholusia aether currents");
+        var currents = store.GetAetherCurrentZone(zone.RowId);
+        Assert.NotNull(currents);
+        Assert.Equal("Kholusia", currents.Name);
+        Assert.Equal(5, currents.QuestCurrents.Count);
+        Assert.All(currents.QuestCurrents, q => Assert.False(string.IsNullOrEmpty(q.Quest.Name)));
+        Assert.True(currents.QuestCurrents.Count(q => q.StartLocation != null) >= 4,
+            "quest start locations collapsed");
+    }
+
+    // FATE cards are name + level + description; Location is an LGB id the
+    // sheets cannot resolve, so no coordinates are asserted anywhere.
+    [Fact]
+    public void CleverGirlsFateResolvesFromSheets()
+    {
+        var store = fixture.Store();
+
+        var fate = store.GetFate(120);
+        Assert.NotNull(fate);
+        Assert.Equal("Clever Girls", fate.Name);
+        Assert.Equal(5, fate.Level);
+        Assert.Contains("anoles", fate.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(fate.RequiredQuest);
+    }
+
+    // The Bozja field fates are the quest-gated ones.
+    [Fact]
+    public void BozjanFateCarriesItsRequiredQuest()
+    {
+        var store = fixture.Store();
+
+        var gated = store.GetAllNames()
+            .Where(n => n.Kind == EntityKind.Fate)
+            .Select(n => store.GetFate(n.RowId))
+            .FirstOrDefault(f => f?.RequiredQuest != null);
+        Assert.NotNull(gated);
+        Assert.Equal("Where Eagles Nest", gated.RequiredQuest!.Name);
+    }
+
+    // Pins the Leve sheet reads: assignment type, job category, the direct
+    // LevelLevemete flag, and reward columns. "In with the New" has been the
+    // level 1 Gridania carpenter leve since 2.0.
+    [Fact]
+    public void InWithTheNewLeveResolvesItsLevemete()
+    {
+        var store = fixture.Store();
+
+        var leve = store.GetLeve(21);
+        Assert.NotNull(leve);
+        Assert.Equal("In with the New", leve.Name);
+        Assert.Equal(1, leve.Level);
+        Assert.Equal("Carpenter", leve.Type);
+        Assert.Equal("CRP", leve.JobCategory);
+        Assert.Equal(1, leve.AllowanceCost);
+        Assert.True(leve.ExpReward > 0);
+        Assert.True(leve.GilReward > 0);
+
+        Assert.NotNull(leve.Levemete);
+        Assert.Contains("Gridania", leve.Levemete.ZoneName, StringComparison.OrdinalIgnoreCase);
+        Assert.InRange(leve.Levemete.MapX, 10, 13);
+        Assert.InRange(leve.Levemete.MapY, 10, 13);
+    }
+
+    // Pins the MapMarker-based aetheryte join (DataType 3 -> Aetheryte row,
+    // pixel coords through FromMapPixel) and the nearest-by-distance pick:
+    // the Western Thanalan iron ore node sits closer to Horizon than to any
+    // other aetheryte on that map.
+    [Fact]
+    public void IronOreNodeNamesHorizonAsItsNearestAetheryte()
+    {
+        var store = fixture.Store();
+
+        var ironOre = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Gatherable && n.Name == "iron ore");
+        Assert.NotNull(ironOre);
+
+        var item = store.GetItem(ironOre.RowId);
+        Assert.NotNull(item?.Acquisition);
+
+        var node = item.Acquisition.Gathering.First(g =>
+            g.Location is { } loc && loc.ZoneName.Contains("Western Thanalan", StringComparison.OrdinalIgnoreCase));
+        var near = node.Location!.Aetheryte;
+        Assert.NotNull(near);
+        Assert.Equal("Horizon", near.Name);
+        Assert.False(near.Aethernet);
+        Assert.Equal(17u, near.TeleportRowId);
+        Assert.Equal("Horizon", near.TeleportName);
+    }
+
+    // Pins the aethernet-shard branch (MapMarker DataType 4 -> PlaceName) and
+    // the teleport target behind it: Momodi's counter is the Quicksand, whose
+    // shard is the Adventurers' Guild, but teleporting still means the city's
+    // own aetheryte.
+    [Fact]
+    public void MomodiSitsByTheAdventurersGuildShard()
+    {
+        var store = fixture.Store();
+
+        var momodi = store.GetAllNames()
+            .FirstOrDefault(n => n.Kind == EntityKind.Npc && n.Name.StartsWith("momodi"));
+        Assert.NotNull(momodi);
+
+        var npc = store.GetNpc(momodi.RowId);
+        var near = npc?.Location?.Aetheryte;
+        Assert.NotNull(near);
+        Assert.Equal("Adventurers' Guild", near.Name);
+        Assert.True(near.Aethernet);
+        Assert.Equal(9u, near.TeleportRowId);
+        Assert.Equal("Ul'dah - Steps of Nald", near.TeleportName);
+    }
+
+    // The Steps of Thal map carries shards but no teleport aetheryte, so the
+    // teleport target has to come from TerritoryType.Aetheryte (probed 7.3:
+    // every named town and field territory names one). Any NPC placed there
+    // will do; the first few found pin the fallback.
+    [Fact]
+    public void StepsOfThalPlacementsTeleportViaTheUldahAetheryte()
+    {
+        var store = fixture.Store();
+        const uint stepsOfThalMap = 14;
+
+        var found = 0;
+        foreach (var entry in store.GetAllNames().Where(n => n.Kind == EntityKind.Npc))
+        {
+            var npc = store.GetNpc(entry.RowId);
+            if (npc?.Location is not { MapId: stepsOfThalMap } location)
+                continue;
+
+            Assert.NotNull(location.Aetheryte);
+            Assert.True(location.Aetheryte.Aethernet, $"{npc.Name}: expected a shard on the Steps of Thal");
+            Assert.Equal(9u, location.Aetheryte.TeleportRowId);
+            if (++found == 3)
+                break;
+        }
+
+        Assert.Equal(3, found);
+    }
+
+    // Quest-scene copies of a zone are separate TerritoryType rows sharing
+    // the public map; a flag carrying the copy's id never matches where the
+    // player stands. Row 1003988 is a Momodi scene placement in territory
+    // 182 (probed 7.3), which must come out as the public Ul'dah row 130.
+    [Fact]
+    public void ScenePlacementsNormalizeToThePublicTerritory()
+    {
+        var store = fixture.Store();
+
+        var copy = store.GetNpc(1003988);
+        Assert.NotNull(copy?.Location);
+        Assert.Equal(130u, copy.Location.TerritoryTypeId);
+        Assert.Equal(13u, copy.Location.MapId);
+    }
+
+    // Coverage tripwire: nearly every quest start should name a nearest
+    // aetheryte, through a same-map marker or the territory fallback. A
+    // patch that reshapes MapMarker or TerritoryType.Aetheryte drops this.
+    [Fact]
+    public void AlmostEveryQuestStartKnowsItsNearestAetheryte()
+    {
+        var store = fixture.Store();
+
+        var located = 0;
+        var withAetheryte = 0;
+        foreach (var entry in store.GetAllNames().Where(n => n.Kind == EntityKind.Quest).Take(600))
+        {
+            if (store.GetQuest(entry.RowId)?.StartLocation is not { } start)
+                continue;
+
+            located++;
+            if (start.Aetheryte != null)
+                withAetheryte++;
+        }
+
+        Assert.True(located > 400, $"only {located} located quest starts");
+        Assert.True(withAetheryte >= located * 0.95, $"{withAetheryte}/{located} quest starts have a nearest aetheryte");
     }
 
     private static int Count(IReadOnlyList<NameIndexEntry> names, EntityKind kind) =>

@@ -44,6 +44,24 @@ public class SectionExtractorTests
         Assert.Equal("Treasure Hunt", Assert.Single(picked).Title);
     }
 
+    // The Aithon Whistle shape: a machine-generated item page whose only
+    // drop info sits in a "Duties" subsection under the umbrella heading.
+    [Fact]
+    public void DutiesSubsectionIsPickedWithoutTheUmbrella()
+    {
+        var sections = new[]
+        {
+            Section("1", "Acquisition"),
+            Section("2", "Duties"),
+            Section("3", "Exchange"),
+            Section("4", "Used For"),
+        };
+
+        var picked = SectionExtractor.SelectSections(SearchCategory.Items, sections);
+
+        Assert.Equal("Duties", Assert.Single(picked).Title);
+    }
+
     [Fact]
     public void UnrelatedHeadingsAreIgnored()
     {

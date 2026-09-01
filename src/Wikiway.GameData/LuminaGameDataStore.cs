@@ -10,6 +10,13 @@ public sealed class LuminaGameDataStore : IGameDataStore
 {
     private const byte LevelObjectTypeEventNpc = 8;
 
+    // MapMarker.DataType: 3 keys an Aetheryte row, 4 an aethernet shard's
+    // PlaceName. Aetheryte.Level[] is empty for every teleport aetheryte, so
+    // the map markers are the only sheet-side source of their coordinates
+    // (probed 7.3: 107/107 named aetherytes marked on their own map).
+    private const byte MapMarkerAetheryte = 3;
+    private const byte MapMarkerAethernet = 4;
+
     // Solo := quest battles or Masked Carnivale. ContentMemberType can't tell:
     // quest battles carry all-zero role counts and named CFC party sizes are
     // only ever 0/4/8 (probed against 7.3 sheets; 116 solo rows). The canary
@@ -51,6 +58,8 @@ public sealed class LuminaGameDataStore : IGameDataStore
     private readonly Lock dutyLock = new();
     private readonly Lock unlockLock = new();
     private readonly Lock acquisitionLock = new();
+    private readonly Lock huntLock = new();
+    private Dictionary<uint, string>? markZoneByBNpcName;
     private Dictionary<uint, Level>? npcLevels;
     private Dictionary<uint, uint>? dutyByTerritory;
     private Dictionary<uint, uint>? unlockQuestByInstance;
@@ -61,6 +70,21 @@ public sealed class LuminaGameDataStore : IGameDataStore
     private Dictionary<uint, List<uint>>? npcsBySpecialShop;
     private Dictionary<uint, List<uint>>? gatheringBasesByItem;
     private Dictionary<uint, uint>? gatheringPointByBase;
+    private Dictionary<uint, List<uint>>? fishingSpotsByItem;
+    private Dictionary<uint, List<uint>>? spearfishingSpotsByItem;
+    private Dictionary<uint, uint>? fishNoteByItem;
+    private Dictionary<uint, List<GcSealOffer>>? sealOffersByItem;
+    private Dictionary<uint, uint>? quartermasterByCompany;
+    private Dictionary<uint, List<uint>>? venturesByItem;
+    private Dictionary<uint, uint>? ventureTaskByNormal;
+    private ItemActionTeachers? teachers;
+    private Dictionary<uint, int>? recipeUsesByItem;
+    private Dictionary<uint, List<uint>>? deliveryNpcsByItem;
+    private Dictionary<uint, List<CollectableTurnIn>>? collectableTurnInsByItem;
+    private Dictionary<uint, List<uint>>? treasureRanksByItem;
+    private Dictionary<uint, string>? materiaTagByItem;
+    private readonly Lock aetheryteLock = new();
+    private Dictionary<uint, List<AetheryteMarker>>? aetherytesByMap;
 
     public LuminaGameDataStore(Lumina.GameData gameData)
     {
@@ -86,6 +110,10 @@ public sealed class LuminaGameDataStore : IGameDataStore
         NpcLevels();
         ct.ThrowIfCancellationRequested();
         DutyTerritoryLookup();
+        ct.ThrowIfCancellationRequested();
+        MarkZones();
+        ct.ThrowIfCancellationRequested();
+        AetheryteMarkers();
     }
 
     public IReadOnlyList<NameIndexEntry> GetAllNames(CancellationToken ct = default)
@@ -116,6 +144,50 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
         foreach (var row in Sheet<Achievement>())
             AddName(names, EntityKind.Achievement, row.RowId, row.Name.ExtractText());
+
+        ct.ThrowIfCancellationRequested();
+        foreach (var row in Sheet<Orchestrion>())
+            AddName(names, EntityKind.Orchestrion, row.RowId, row.Name.ExtractText());
+
+        foreach (var row in Sheet<TripleTriadCard>())
+            AddName(names, EntityKind.TripleTriadCard, row.RowId, row.Name.ExtractText());
+
+        // Command-less emote rows are event-stage variants (duplicate Snowball
+        // entries and the like), not something a player can look up.
+        foreach (var row in Sheet<Emote>())
+        {
+            if (row.TextCommand.ValueNullable is { } command && !command.Command.IsEmpty)
+                AddName(names, EntityKind.Emote, row.RowId, row.Name.ExtractText());
+        }
+
+        ct.ThrowIfCancellationRequested();
+        foreach (var row in Sheet<Adventure>())
+            AddName(names, EntityKind.Vista, row.RowId, row.Name.ExtractText());
+
+        foreach (var row in Sheet<NotoriousMonster>())
+        {
+            if (row.BNpcName.ValueNullable is { } mark && !mark.Singular.IsEmpty)
+                AddName(names, EntityKind.HuntMark, row.RowId, mark.Singular.ExtractText());
+        }
+
+        // Indexed under both word orders so "kholusia" and "aether currents"
+        // both reach the zone card; the duplicates collapse at match time.
+        foreach (var row in Sheet<AetherCurrentCompFlgSet>())
+        {
+            var zone = row.Territory.ValueNullable?.PlaceName.ValueNullable?.Name.ExtractText() ?? "";
+            if (zone.Length > 0)
+            {
+                AddName(names, EntityKind.AetherCurrentZone, row.RowId, $"{zone} aether currents");
+                AddName(names, EntityKind.AetherCurrentZone, row.RowId, $"aether currents {zone}");
+            }
+        }
+
+        ct.ThrowIfCancellationRequested();
+        foreach (var row in Sheet<Fate>())
+            AddName(names, EntityKind.Fate, row.RowId, row.Name.ExtractText());
+
+        foreach (var row in Sheet<Leve>())
+            AddName(names, EntityKind.Leve, row.RowId, row.Name.ExtractText());
 
         ct.ThrowIfCancellationRequested();
         foreach (var row in Sheet<ContentFinderCondition>())
@@ -267,6 +339,8 @@ public sealed class LuminaGameDataStore : IGameDataStore
             BuildAcquisition(rowId, row.Value.PriceMid))
         {
             Equipment = BuildEquipment(row.Value),
+            Usage = BuildUsage(rowId),
+            Food = BuildFood(row.Value),
         };
     }
 
@@ -373,7 +447,14 @@ public sealed class LuminaGameDataStore : IGameDataStore
     {
         if (recipesByItem == null || shopsByItem == null || npcsByShop == null ||
             specialShopsByItem == null || npcsBySpecialShop == null ||
-            gatheringBasesByItem == null || gatheringPointByBase == null)
+            gatheringBasesByItem == null || gatheringPointByBase == null ||
+            fishingSpotsByItem == null || spearfishingSpotsByItem == null ||
+            fishNoteByItem == null || sealOffersByItem == null ||
+            quartermasterByCompany == null || venturesByItem == null ||
+            ventureTaskByNormal == null || teachers == null ||
+            recipeUsesByItem == null || deliveryNpcsByItem == null ||
+            collectableTurnInsByItem == null || treasureRanksByItem == null ||
+            materiaTagByItem == null)
         {
             lock (acquisitionLock)
             {
@@ -384,9 +465,80 @@ public sealed class LuminaGameDataStore : IGameDataStore
                 npcsBySpecialShop ??= BuildSpecialShopNpcLookup();
                 gatheringBasesByItem ??= BuildGatheringItemLookup();
                 gatheringPointByBase ??= BuildGatheringPointLookup();
+                fishingSpotsByItem ??= BuildFishingSpotLookup();
+                spearfishingSpotsByItem ??= BuildSpearfishingLookup();
+                fishNoteByItem ??= BuildFishNoteLookup();
+                sealOffersByItem ??= BuildSealOfferLookup();
+                quartermasterByCompany ??= BuildQuartermasterLookup();
+                venturesByItem ??= BuildVentureItemLookup();
+                ventureTaskByNormal ??= BuildVentureTaskLookup();
+                teachers ??= BuildTeacherLookup();
+                recipeUsesByItem ??= BuildRecipeUseLookup();
+                deliveryNpcsByItem ??= BuildDeliveryLookup();
+                collectableTurnInsByItem ??= BuildCollectableLookup();
+                treasureRanksByItem ??= BuildTreasureRankLookup();
+                materiaTagByItem ??= BuildMateriaTagLookup();
             }
         }
     }
+
+    // ItemAction type discriminators (ItemAction.Action.RowId); Data[0] names
+    // the taught row, except orchestrion rolls where Item.AdditionalData does
+    // and emote manuals where Data[0] is the Emote.UnlockLink unlock bit.
+    // Probed 2026-09-01 against 7.3 sheets (Aithon Whistle, Wind-up Cursor,
+    // A Cold Wind Orchestrion Roll, Momodi Modi Card, The Bomb Dance).
+    private const uint ItemActionMount = 1322;
+    private const uint ItemActionMinion = 853;
+    private const uint ItemActionOrchestrion = 25183;
+    private const uint ItemActionTripleTriadCard = 3357;
+    private const uint ItemActionUnlockBit = 2633;
+
+    private sealed record ItemActionTeachers(
+        Dictionary<uint, uint> ByMount,
+        Dictionary<uint, uint> ByMinion,
+        Dictionary<uint, uint> ByOrchestrion,
+        Dictionary<uint, uint> ByCard,
+        Dictionary<uint, uint> ByUnlockBit);
+
+    private ItemActionTeachers Teachers()
+    {
+        EnsureAcquisitionLookups();
+        return teachers!;
+    }
+
+    private ItemActionTeachers BuildTeacherLookup()
+    {
+        var lookup = new ItemActionTeachers([], [], [], [], []);
+        foreach (var item in Sheet<Item>())
+        {
+            if (item.Name.IsEmpty || item.ItemAction.ValueNullable is not { } action)
+                continue;
+
+            switch (action.Action.RowId)
+            {
+                case ItemActionMount:
+                    lookup.ByMount.TryAdd(action.Data[0], item.RowId);
+                    break;
+                case ItemActionMinion:
+                    lookup.ByMinion.TryAdd(action.Data[0], item.RowId);
+                    break;
+                case ItemActionOrchestrion:
+                    lookup.ByOrchestrion.TryAdd(item.AdditionalData.RowId, item.RowId);
+                    break;
+                case ItemActionTripleTriadCard:
+                    lookup.ByCard.TryAdd(action.Data[0], item.RowId);
+                    break;
+                case ItemActionUnlockBit:
+                    lookup.ByUnlockBit.TryAdd(action.Data[0], item.RowId);
+                    break;
+            }
+        }
+
+        return lookup;
+    }
+
+    private ItemEntity? TeachingItem(Dictionary<uint, uint> lookup, uint rowId) =>
+        lookup.TryGetValue(rowId, out var itemId) ? GetItem(itemId) : null;
 
     private ItemAcquisition? BuildAcquisition(uint itemRowId, uint gilPrice)
     {
@@ -399,19 +551,20 @@ public sealed class LuminaGameDataStore : IGameDataStore
             foreach (var recipeId in recipeIds)
             {
                 var recipe = sheet.GetRow(recipeId);
-                var ingredients = new List<string>();
+                var ingredients = new List<ItemAmount>();
                 for (var i = 0; i < recipe.Ingredient.Count; i++)
                 {
                     if (recipe.Ingredient[i].RowId != 0 &&
                         recipe.Ingredient[i].ValueNullable is { } ingredient &&
                         !ingredient.Name.IsEmpty)
-                        ingredients.Add($"{recipe.AmountIngredient[i]}x {ingredient.Name.ExtractText()}");
+                        ingredients.Add(new ItemAmount(ingredient.Name.ExtractText(), recipe.AmountIngredient[i]));
                 }
 
                 recipes.Add(new RecipeSource(
                     recipe.CraftType.ValueNullable?.Name.ExtractText() ?? "",
                     recipe.RecipeLevelTable.ValueNullable?.ClassJobLevel ?? 0,
-                    ingredients));
+                    ingredients,
+                    recipe.SecretRecipeBook.ValueNullable?.Name.ExtractText() ?? ""));
             }
         }
 
@@ -450,10 +603,15 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
         var exchanges = BuildExchanges(itemRowId);
         var gathering = BuildGathering(itemRowId);
+        var fishing = BuildFishing(itemRowId);
+        var sealVendors = BuildSealVendors(itemRowId);
+        var ventures = BuildVentures(itemRowId);
+        var fishingNote = fishing.Count > 0 ? FishNote(itemRowId) : "";
 
-        return recipes.Count == 0 && vendors.Count == 0 && exchanges.Count == 0 && gathering.Count == 0
+        return recipes.Count == 0 && vendors.Count == 0 && exchanges.Count == 0 && gathering.Count == 0 &&
+               fishing.Count == 0 && sealVendors.Count == 0 && ventures.Count == 0
             ? null
-            : new ItemAcquisition(recipes, vendors, exchanges, gathering);
+            : new ItemAcquisition(recipes, vendors, exchanges, gathering, fishing, sealVendors, ventures, fishingNote);
     }
 
     private List<ExchangeSource> BuildExchanges(uint itemRowId)
@@ -493,25 +651,25 @@ public sealed class LuminaGameDataStore : IGameDataStore
         return exchanges;
     }
 
-    private static List<string> BuildExchangeCosts(SpecialShop shop, uint itemRowId)
+    private static List<IReadOnlyList<ItemAmount>> BuildExchangeCosts(SpecialShop shop, uint itemRowId)
     {
         // Each shop entry is one offer; its cost slots are all required together.
         // Tomestone stand-in slots resolve to no named item and are skipped.
-        var costs = new List<string>();
+        var costs = new List<IReadOnlyList<ItemAmount>>();
         foreach (var entry in shop.Item)
         {
             if (!entry.ReceiveItems.Any(r => r.Item.RowId == itemRowId))
                 continue;
 
-            var parts = new List<string>();
+            var parts = new List<ItemAmount>();
             foreach (var cost in entry.ItemCosts)
             {
                 if (cost.ItemCost.ValueNullable is { } costItem && !costItem.Name.IsEmpty)
-                    parts.Add($"{cost.CurrencyCost}x {costItem.Name.ExtractText()}");
+                    parts.Add(new ItemAmount(costItem.Name.ExtractText(), cost.CurrencyCost));
             }
 
             if (parts.Count > 0)
-                costs.Add(string.Join(" + ", parts));
+                costs.Add(parts);
         }
 
         return costs;
@@ -523,7 +681,7 @@ public sealed class LuminaGameDataStore : IGameDataStore
         if (!gatheringBasesByItem!.TryGetValue(itemRowId, out var baseIds))
             return gathering;
 
-        var seen = new HashSet<(string Type, string Zone, float X, float Y)>();
+        var seen = new HashSet<(string Type, string Zone, float X, float Y, string Window)>();
         foreach (var baseId in baseIds)
         {
             var pointBase = Sheet<GatheringPointBase>().GetRowOrDefault(baseId);
@@ -532,14 +690,64 @@ public sealed class LuminaGameDataStore : IGameDataStore
 
             var nodeType = pointBase.Value.GatheringType.ValueNullable?.Name.ExtractText() ?? "";
             var location = GatheringLocation(baseId);
+            var window = GatheringTimeWindow(baseId);
             var key = location is { } loc
-                ? (nodeType, loc.ZoneName, MathF.Round(loc.MapX, 1), MathF.Round(loc.MapY, 1))
-                : (nodeType, "", 0f, 0f);
+                ? (nodeType, loc.ZoneName, MathF.Round(loc.MapX, 1), MathF.Round(loc.MapY, 1), window)
+                : (nodeType, "", 0f, 0f, window);
             if (seen.Add(key))
-                gathering.Add(new GatheringSource(nodeType, pointBase.Value.GatheringLevel, location));
+                gathering.Add(new GatheringSource(nodeType, pointBase.Value.GatheringLevel, location, window));
         }
 
         return gathering;
+    }
+
+    // Sheet times are Eorzean clock values (900 = 9:00). Durations count the
+    // same way but carry past 60 minutes (300 = 3h ARR windows, 160 = 2h HW
+    // windows) - probe-verified against Spruce Log 9:00-12:00 and Chysahl
+    // Greens 8:00-10:00/20:00-22:00; 65535 marks an unused slot.
+    private const ushort UnusedTime = 65535;
+
+    private static int ToEorzeaMinutes(ushort clock) => ((clock / 100) * 60) + (clock % 100);
+
+    private static string ClockLabel(int minutes)
+    {
+        if (minutes != 24 * 60)
+            minutes %= 24 * 60;
+        return $"{minutes / 60}:{minutes % 60:00}";
+    }
+
+    private string GatheringTimeWindow(uint baseRowId)
+    {
+        if (!gatheringPointByBase!.TryGetValue(baseRowId, out var pointId))
+            return "";
+
+        var transient = Sheet<GatheringPointTransient>().GetRowOrDefault(pointId);
+        if (transient == null)
+            return "";
+
+        if (transient.Value.GatheringRarePopTimeTable.ValueNullable is { } table)
+        {
+            var windows = new List<string>();
+            for (var i = 0; i < table.StartTime.Count && i < table.Duration.Count; i++)
+            {
+                if (table.StartTime[i] == UnusedTime)
+                    continue;
+
+                var start = ToEorzeaMinutes(table.StartTime[i]);
+                windows.Add($"{ClockLabel(start)}-{ClockLabel(start + ToEorzeaMinutes(table.Duration[i]))}");
+            }
+
+            if (windows.Count > 0)
+                return $"Unspoiled · {string.Join(", ", windows)} ET";
+        }
+
+        var ephemeralStart = transient.Value.EphemeralStartTime;
+        var ephemeralEnd = transient.Value.EphemeralEndTime;
+        if (ephemeralStart == UnusedTime || ephemeralStart == ephemeralEnd)
+            return "";
+
+        var end = ephemeralEnd == 0 ? 24 * 60 : ToEorzeaMinutes(ephemeralEnd);
+        return $"Ephemeral · {ClockLabel(ToEorzeaMinutes(ephemeralStart))}-{ClockLabel(end)} ET";
     }
 
     private MapLocation? GatheringLocation(uint baseRowId)
@@ -554,10 +762,140 @@ public sealed class LuminaGameDataStore : IGameDataStore
         if (territory == null || map == null || exported == null)
             return null;
 
-        var zone = territory.Value.PlaceName.ValueNullable?.Name.ExtractText() ?? "";
         var mapX = MapCoordConverter.ToMapCoord(exported.Value.X, map.Value.SizeFactor, map.Value.OffsetX);
         var mapY = MapCoordConverter.ToMapCoord(exported.Value.Y, map.Value.SizeFactor, map.Value.OffsetY);
-        return new MapLocation(territory.Value.RowId, map.Value.RowId, mapX, mapY, zone);
+        return Locate(territory.Value, map.Value, mapX, mapY);
+    }
+
+    private List<FishingSource> BuildFishing(uint itemRowId)
+    {
+        var fishing = new List<FishingSource>();
+        if (fishingSpotsByItem!.TryGetValue(itemRowId, out var spotIds))
+        {
+            foreach (var spotId in spotIds)
+            {
+                var spot = Sheet<FishingSpot>().GetRowOrDefault(spotId);
+                if (spot == null || spot.Value.PlaceName.ValueNullable is not { } place || place.Name.IsEmpty)
+                    continue;
+
+                fishing.Add(new FishingSource(
+                    place.Name.ExtractText(),
+                    spot.Value.GatheringLevel,
+                    FishingLocation(spot.Value.TerritoryType.ValueNullable, spot.Value.X, spot.Value.Z),
+                    Spearfishing: false));
+            }
+        }
+
+        if (spearfishingSpotsByItem!.TryGetValue(itemRowId, out var notebookIds))
+        {
+            foreach (var notebookId in notebookIds)
+            {
+                var spot = Sheet<SpearfishingNotebook>().GetRowOrDefault(notebookId);
+                if (spot == null || spot.Value.PlaceName.ValueNullable is not { } place || place.Name.IsEmpty)
+                    continue;
+
+                fishing.Add(new FishingSource(
+                    place.Name.ExtractText(),
+                    spot.Value.GatheringLevel,
+                    FishingLocation(spot.Value.TerritoryType.ValueNullable, spot.Value.X, spot.Value.Y),
+                    Spearfishing: true));
+            }
+        }
+
+        return fishing;
+    }
+
+    private MapLocation? FishingLocation(TerritoryType? territory, int pixelX, int pixelY)
+    {
+        var map = territory?.Map.ValueNullable;
+        if (territory == null || map == null)
+            return null;
+
+        return Locate(
+            territory.Value,
+            map.Value,
+            MapCoordConverter.FromMapPixel(pixelX, map.Value.SizeFactor),
+            MapCoordConverter.FromMapPixel(pixelY, map.Value.SizeFactor));
+    }
+
+    private string FishNote(uint itemRowId)
+    {
+        if (!fishNoteByItem!.TryGetValue(itemRowId, out var paramId))
+            return "";
+
+        var row = Sheet<FishParameter>().GetRowOrDefault(paramId);
+        return row?.Text.ExtractText() ?? "";
+    }
+
+    private List<SealVendorSource> BuildSealVendors(uint itemRowId)
+    {
+        var vendors = new List<SealVendorSource>();
+        if (!sealOffersByItem!.TryGetValue(itemRowId, out var offers))
+            return vendors;
+
+        var seen = new HashSet<GcSealOffer>();
+        foreach (var offer in offers)
+        {
+            if (!seen.Add(offer) || !quartermasterByCompany!.TryGetValue(offer.GrandCompany, out var npcId))
+                continue;
+
+            var resident = Sheet<ENpcResident>().GetRowOrDefault(npcId);
+            if (resident == null || resident.Value.Singular.IsEmpty)
+                continue;
+
+            vendors.Add(new SealVendorSource(
+                TitleCase(resident.Value.Singular.ExtractText()),
+                FindLocation(npcId),
+                offer.Seals,
+                RankName(offer.GrandCompany, offer.Rank)));
+        }
+
+        return vendors;
+    }
+
+    // Rank display names live in per-company text sheets; the male and female
+    // variants carry the same strings. Rank 1 means any member, not worth a label.
+    private string RankName(uint grandCompany, uint rankRowId)
+    {
+        if (rankRowId <= 1)
+            return "";
+
+        return grandCompany switch
+        {
+            1 => Sheet<GCRankLimsaMaleText>().GetRowOrDefault(rankRowId)?.Singular.ExtractText() ?? "",
+            2 => Sheet<GCRankGridaniaMaleText>().GetRowOrDefault(rankRowId)?.Singular.ExtractText() ?? "",
+            3 => Sheet<GCRankUldahMaleText>().GetRowOrDefault(rankRowId)?.Singular.ExtractText() ?? "",
+            _ => "",
+        };
+    }
+
+    private List<VentureSource> BuildVentures(uint itemRowId)
+    {
+        var ventures = new List<VentureSource>();
+        if (!venturesByItem!.TryGetValue(itemRowId, out var normalIds))
+            return ventures;
+
+        foreach (var normalId in normalIds)
+        {
+            if (!ventureTaskByNormal!.TryGetValue(normalId, out var taskId))
+                continue;
+
+            var task = Sheet<RetainerTask>().GetRowOrDefault(taskId);
+            var normal = Sheet<RetainerTaskNormal>().GetRowOrDefault(normalId);
+            if (task == null || normal == null)
+                continue;
+
+            var quantities = normal.Value.Quantity.Where(q => q > 0).ToList();
+            ventures.Add(new VentureSource(
+                task.Value.ClassJobCategory.ValueNullable?.Name.ExtractText() ?? "",
+                task.Value.RetainerLevel,
+                task.Value.VentureCost,
+                quantities.Count == 0 ? ""
+                    : quantities[0] == quantities[^1] ? $"{quantities[0]}"
+                    : $"{quantities[0]}-{quantities[^1]}"));
+        }
+
+        return ventures;
     }
 
     private Dictionary<uint, List<uint>> BuildRecipeLookup()
@@ -621,16 +959,125 @@ public sealed class LuminaGameDataStore : IGameDataStore
         return lookup;
     }
 
+    // A direct 0x1B0000 handler reaches only ~31% of offer-carrying shops
+    // (probed 2026-09-01: 375 of 1215). The rest hang off menu and aggregator
+    // handlers - TopicSelect pages, InclusionShop category trees, PreHandler
+    // gates, CustomTalk scripts - and bicolor-gemstone FateShops are keyed by
+    // the vendor NPC row itself. Shops no mechanism reaches are dev leftovers
+    // and superseded content; leaving them unmapped is the noise filter.
     private Dictionary<uint, List<uint>> BuildSpecialShopNpcLookup()
     {
-        // Special shop event ids live in the 0x1B0000 block of ENpcData.
+        var shops = new HashSet<uint>();
+        foreach (var shop in Sheet<SpecialShop>())
+            shops.Add(shop.RowId);
+
+        var preTargets = new Dictionary<uint, uint>();
+        foreach (var pre in Sheet<PreHandler>())
+        {
+            if (pre.Target.RowId != 0)
+                preTargets.TryAdd(pre.RowId, pre.Target.RowId);
+        }
+
+        var topicEntries = new Dictionary<uint, List<uint>>();
+        foreach (var topic in Sheet<TopicSelect>())
+        {
+            foreach (var entry in topic.Shop)
+            {
+                if (entry.RowId != 0)
+                    Add(topicEntries, topic.RowId, entry.RowId);
+            }
+        }
+
+        var inclusionShops = new Dictionary<uint, List<uint>>();
+        foreach (var inclusion in Sheet<InclusionShop>())
+        {
+            foreach (var category in inclusion.Category)
+            {
+                if (category.ValueNullable?.InclusionShopSeries.ValueNullable is not { } series)
+                    continue;
+
+                foreach (var sub in series)
+                {
+                    if (sub.SpecialShop.RowId != 0)
+                        Add(inclusionShops, inclusion.RowId, sub.SpecialShop.RowId);
+                }
+            }
+        }
+
+        var customTalkShops = new Dictionary<uint, List<uint>>();
+        foreach (var talk in Sheet<CustomTalk>())
+        {
+            foreach (var script in talk.Script)
+            {
+                if (shops.Contains(script.ScriptArg))
+                    Add(customTalkShops, talk.RowId, script.ScriptArg);
+            }
+        }
+
+        foreach (var group in SubrowSheet<CustomTalkNestHandlers>())
+        {
+            foreach (var sub in group)
+            {
+                if (shops.Contains(sub.NestHandler.RowId))
+                    Add(customTalkShops, group.RowId, sub.NestHandler.RowId);
+            }
+        }
+
         var lookup = new Dictionary<uint, List<uint>>();
+
+        // Deepest observed chain is TopicSelect -> PreHandler -> shop; the
+        // budget only exists to stop a malformed self-referencing handler.
+        void Resolve(uint handlerId, uint npcId, int depth)
+        {
+            if (shops.Contains(handlerId))
+            {
+                Add(lookup, handlerId, npcId);
+                return;
+            }
+
+            if (depth == 0)
+                return;
+
+            if (preTargets.TryGetValue(handlerId, out var target))
+                Resolve(target, npcId, depth - 1);
+
+            if (topicEntries.TryGetValue(handlerId, out var entries))
+            {
+                foreach (var entry in entries)
+                    Resolve(entry, npcId, depth - 1);
+            }
+
+            if (inclusionShops.TryGetValue(handlerId, out var included))
+            {
+                foreach (var shopId in included)
+                    Add(lookup, shopId, npcId);
+            }
+
+            if (customTalkShops.TryGetValue(handlerId, out var scripted))
+            {
+                foreach (var shopId in scripted)
+                    Add(lookup, shopId, npcId);
+            }
+        }
+
         foreach (var npcBase in Sheet<ENpcBase>())
         {
             foreach (var handler in npcBase.ENpcData)
             {
-                if (handler.RowId is >= 0x1B0000 and < 0x1C0000)
-                    Add(lookup, handler.RowId, npcBase.RowId);
+                if (handler.RowId != 0)
+                    Resolve(handler.RowId, npcBase.RowId, 3);
+            }
+        }
+
+        foreach (var fateShop in Sheet<FateShop>())
+        {
+            if (fateShop.RowId == 0)
+                continue;
+
+            foreach (var shopRef in fateShop.SpecialShop)
+            {
+                if (shopRef.RowId != 0)
+                    Add(lookup, shopRef.RowId, fateShop.RowId);
             }
         }
 
@@ -685,11 +1132,388 @@ public sealed class LuminaGameDataStore : IGameDataStore
         return lookup;
     }
 
+    private Dictionary<uint, List<uint>> BuildFishingSpotLookup()
+    {
+        var lookup = new Dictionary<uint, List<uint>>();
+        foreach (var spot in Sheet<FishingSpot>())
+        {
+            if (spot.TerritoryType.RowId == 0 || spot.PlaceName.RowId == 0)
+                continue;
+
+            foreach (var item in spot.Item)
+            {
+                if (item.RowId != 0)
+                    Add(lookup, item.RowId, spot.RowId);
+            }
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, List<uint>> BuildSpearfishingLookup()
+    {
+        // Spearfishing bases fill their GatheringPointBase.Item slots with
+        // SpearfishingItem row ids (20000+), disjoint from GatheringItem ids,
+        // so the regular gathering index never sees them.
+        var itemBySpearRow = new Dictionary<uint, uint>();
+        foreach (var row in Sheet<SpearfishingItem>())
+        {
+            if (row.Item.RowId != 0)
+                itemBySpearRow.TryAdd(row.RowId, row.Item.RowId);
+        }
+
+        var lookup = new Dictionary<uint, List<uint>>();
+        foreach (var spot in Sheet<SpearfishingNotebook>())
+        {
+            var pointBase = Sheet<GatheringPointBase>().GetRowOrDefault(spot.GatheringPointBase.RowId);
+            if (pointBase == null || spot.TerritoryType.RowId == 0 || spot.PlaceName.RowId == 0)
+                continue;
+
+            foreach (var entry in pointBase.Value.Item)
+            {
+                if (itemBySpearRow.TryGetValue(entry.RowId, out var itemId))
+                    Add(lookup, itemId, spot.RowId);
+            }
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, uint> BuildFishNoteLookup()
+    {
+        var lookup = new Dictionary<uint, uint>();
+        foreach (var row in Sheet<FishParameter>())
+        {
+            if (row.Item.RowId != 0 && !row.Text.IsEmpty)
+                lookup.TryAdd(row.Item.RowId, row.RowId);
+        }
+
+        return lookup;
+    }
+
+    private sealed record GcSealOffer(uint GrandCompany, uint Seals, uint Rank);
+
+    private Dictionary<uint, List<GcSealOffer>> BuildSealOfferLookup()
+    {
+        var lookup = new Dictionary<uint, List<GcSealOffer>>();
+        var categories = Sheet<GCScripShopCategory>();
+        foreach (var group in SubrowSheet<GCScripShopItem>())
+        {
+            var company = categories.GetRowOrDefault(group.RowId)?.GrandCompany.RowId ?? 0;
+            if (company == 0)
+                continue;
+
+            foreach (var sub in group)
+            {
+                if (sub.Item.RowId == 0)
+                    continue;
+
+                if (!lookup.TryGetValue(sub.Item.RowId, out var list))
+                    lookup[sub.Item.RowId] = list = [];
+                list.Add(new GcSealOffer(company, sub.CostGCSeals, sub.RequiredGrandCompanyRank.RowId));
+            }
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, uint> BuildQuartermasterLookup()
+    {
+        // GC shop event ids live in the 0x160000 block of ENpcData; each
+        // company has exactly one quartermaster NPC.
+        var companyByShop = new Dictionary<uint, uint>();
+        foreach (var shop in Sheet<GCShop>())
+        {
+            if (shop.GrandCompany.RowId != 0)
+                companyByShop.TryAdd(shop.RowId, shop.GrandCompany.RowId);
+        }
+
+        var lookup = new Dictionary<uint, uint>();
+        foreach (var npcBase in Sheet<ENpcBase>())
+        {
+            foreach (var handler in npcBase.ENpcData)
+            {
+                if (handler.RowId is >= 0x160000 and < 0x170000 &&
+                    companyByShop.TryGetValue(handler.RowId, out var company))
+                    lookup.TryAdd(company, npcBase.RowId);
+            }
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, List<uint>> BuildVentureItemLookup()
+    {
+        var lookup = new Dictionary<uint, List<uint>>();
+        foreach (var normal in Sheet<RetainerTaskNormal>())
+        {
+            if (normal.Item.RowId != 0)
+                Add(lookup, normal.Item.RowId, normal.RowId);
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, uint> BuildVentureTaskLookup()
+    {
+        // RetainerTask.Task points at RetainerTaskNormal (or RetainerTaskRandom
+        // for the exploration ventures, which never award a specific item).
+        var lookup = new Dictionary<uint, uint>();
+        foreach (var task in Sheet<RetainerTask>())
+        {
+            if (task.IsRandom || task.Task.RowId == 0)
+                continue;
+
+            if (!lookup.TryGetValue(task.Task.RowId, out var existing) || task.RowId < existing)
+                lookup[task.Task.RowId] = task.RowId;
+        }
+
+        return lookup;
+    }
+
     private static void Add(Dictionary<uint, List<uint>> lookup, uint key, uint value)
     {
         if (!lookup.TryGetValue(key, out var list))
             lookup[key] = list = [];
         list.Add(value);
+    }
+
+    private ItemUsage? BuildUsage(uint itemRowId)
+    {
+        EnsureAcquisitionLookups();
+
+        var recipeUses = recipeUsesByItem!.GetValueOrDefault(itemRowId);
+        var deliveries = BuildDeliveries(itemRowId);
+        var turnIns = collectableTurnInsByItem!.GetValueOrDefault(itemRowId)
+            ?? (IReadOnlyList<CollectableTurnIn>)[];
+        var treasureMap = BuildTreasureMap(itemRowId);
+        var materiaTag = materiaTagByItem!.GetValueOrDefault(itemRowId, "");
+
+        return recipeUses == 0 && deliveries.Count == 0 && turnIns.Count == 0 &&
+               treasureMap == null && materiaTag.Length == 0
+            ? null
+            : new ItemUsage(recipeUses, deliveries, turnIns, treasureMap, materiaTag);
+    }
+
+    private List<DeliverySource> BuildDeliveries(uint itemRowId)
+    {
+        var deliveries = new List<DeliverySource>();
+        if (!deliveryNpcsByItem!.TryGetValue(itemRowId, out var npcIds))
+            return deliveries;
+
+        foreach (var npcId in npcIds.Distinct())
+        {
+            var row = Sheet<SatisfactionNpc>().GetRowOrDefault(npcId);
+            if (row?.Npc.ValueNullable is not { } npc || npc.Singular.IsEmpty)
+                continue;
+
+            var quest = row.Value.QuestRequired.ValueNullable;
+            deliveries.Add(new DeliverySource(
+                TitleCase(npc.Singular.ExtractText()),
+                quest is { Name.IsEmpty: false } q
+                    ? new QuestLink(row.Value.QuestRequired.RowId, q.Name.ExtractText())
+                    : null));
+        }
+
+        return deliveries;
+    }
+
+    private TreasureMapInfo? BuildTreasureMap(uint itemRowId)
+    {
+        if (!treasureRanksByItem!.TryGetValue(itemRowId, out var rankIds))
+            return null;
+
+        // Some map items sit on two rank rows (Timeworn Leather Map); the
+        // stray row's spots carry Location 0 and contribute nothing.
+        var partySize = 0;
+        var order = new List<string>();
+        var counts = new Dictionary<string, int>();
+        var spots = SubrowSheet<TreasureSpot>();
+        foreach (var rankId in rankIds)
+        {
+            var rank = Sheet<TreasureHuntRank>().GetRowOrDefault(rankId);
+            if (rank == null || !spots.HasRow(rankId))
+                continue;
+
+            var any = false;
+            foreach (var spot in spots.GetRow(rankId))
+            {
+                var zone = spot.Location.ValueNullable?.Territory.ValueNullable?
+                    .PlaceName.ValueNullable?.Name.ExtractText() ?? "";
+                if (zone.Length == 0)
+                    continue;
+
+                if (!counts.ContainsKey(zone))
+                    order.Add(zone);
+                counts[zone] = counts.GetValueOrDefault(zone) + 1;
+                any = true;
+            }
+
+            if (any)
+                partySize = Math.Max(partySize, rank.Value.MaxPartySize);
+        }
+
+        return order.Count == 0
+            ? null
+            : new TreasureMapInfo(partySize, order.Select(z => new TreasureZone(z, counts[z])).ToList());
+    }
+
+    // Food and medicine actions carry (status, ItemFood row, duration in
+    // seconds) in Data[0..2]: both food types buff Well Fed for 1800s, the
+    // stat tinctures Medicated for 15-30s (probed 2026-09-01: Boiled Egg,
+    // Rroneek Steak, Tincture of Strength). NQ and HQ share the ItemFood row;
+    // HQ values live in its ValueHQ/MaxHQ columns. EXPBonusPercent is set on
+    // every ItemFood row, but only Well Fed grants it in-game.
+    private const uint ItemActionBattleFood = 844;
+    private const uint ItemActionCraftFood = 845;
+    private const uint ItemActionMedicine = 846;
+    private const uint StatusWellFed = 48;
+
+    private ItemFoodEffect? BuildFood(Item row)
+    {
+        if (row.ItemAction.ValueNullable is not { } action ||
+            action.Action.RowId is not (ItemActionBattleFood or ItemActionCraftFood or ItemActionMedicine))
+            return null;
+
+        var food = Sheet<ItemFood>().GetRowOrDefault(action.Data[1]);
+        if (food == null)
+            return null;
+
+        var stats = new List<FoodStat>();
+        foreach (var param in food.Value.Params)
+        {
+            if (param.BaseParam.RowId == 0 ||
+                param.BaseParam.ValueNullable is not { } baseParam || baseParam.Name.IsEmpty)
+                continue;
+
+            stats.Add(new FoodStat(
+                baseParam.Name.ExtractText(),
+                param.IsRelative,
+                param.Value,
+                param.Max,
+                row.CanBeHq ? param.ValueHQ : param.Value,
+                row.CanBeHq ? param.MaxHQ : param.Max));
+        }
+
+        return new ItemFoodEffect(
+            Sheet<Status>().GetRowOrDefault(action.Data[0])?.Name.ExtractText() ?? "",
+            action.Data[2],
+            action.Data[0] == StatusWellFed ? food.Value.EXPBonusPercent : 0,
+            stats);
+    }
+
+    private Dictionary<uint, int> BuildRecipeUseLookup()
+    {
+        var lookup = new Dictionary<uint, int>();
+        var counted = new HashSet<uint>();
+        foreach (var recipe in Sheet<Recipe>())
+        {
+            if (recipe.ItemResult.RowId == 0)
+                continue;
+
+            counted.Clear();
+            foreach (var ingredient in recipe.Ingredient)
+            {
+                if (ingredient.RowId != 0 && counted.Add(ingredient.RowId))
+                    lookup[ingredient.RowId] = lookup.GetValueOrDefault(ingredient.RowId) + 1;
+            }
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, List<uint>> BuildDeliveryLookup()
+    {
+        var itemsBySupply = new Dictionary<uint, List<uint>>();
+        foreach (var group in SubrowSheet<SatisfactionSupply>())
+        {
+            foreach (var sub in group)
+            {
+                if (sub.Item.RowId != 0)
+                    Add(itemsBySupply, group.RowId, sub.Item.RowId);
+            }
+        }
+
+        // Each rank's SupplyIndex names a SatisfactionSupply parent row; the
+        // same item can repeat across ranks, deduped at read time.
+        var lookup = new Dictionary<uint, List<uint>>();
+        foreach (var npc in Sheet<SatisfactionNpc>())
+        {
+            if (npc.Npc.RowId == 0)
+                continue;
+
+            foreach (var param in npc.SatisfactionNpcParams)
+            {
+                if (param.SupplyIndex <= 0 || !itemsBySupply.TryGetValue((uint)param.SupplyIndex, out var itemIds))
+                    continue;
+
+                foreach (var itemId in itemIds)
+                    Add(lookup, itemId, npc.RowId);
+            }
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, List<CollectableTurnIn>> BuildCollectableLookup()
+    {
+        // Several collectable shops list the same turn-in; identical
+        // (level band, payout) entries collapse to one.
+        var lookup = new Dictionary<uint, List<CollectableTurnIn>>();
+        var seen = new HashSet<(uint Item, CollectableTurnIn TurnIn)>();
+        foreach (var group in SubrowSheet<CollectablesShopItem>())
+        {
+            foreach (var sub in group)
+            {
+                if (sub.Item.RowId == 0)
+                    continue;
+
+                var turnIn = new CollectableTurnIn(
+                    sub.LevelMin,
+                    sub.LevelMax,
+                    sub.CollectablesShopRewardScrip.ValueNullable?.HighReward ?? 0);
+                if (!seen.Add((sub.Item.RowId, turnIn)))
+                    continue;
+
+                if (!lookup.TryGetValue(sub.Item.RowId, out var list))
+                    lookup[sub.Item.RowId] = list = [];
+                list.Add(turnIn);
+            }
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, List<uint>> BuildTreasureRankLookup()
+    {
+        var lookup = new Dictionary<uint, List<uint>>();
+        foreach (var rank in Sheet<TreasureHuntRank>())
+        {
+            if (rank.ItemName.RowId != 0)
+                Add(lookup, rank.ItemName.RowId, rank.RowId);
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, string> BuildMateriaTagLookup()
+    {
+        // Zero-value grades exist (retired main-stat materia); they get no tag.
+        var lookup = new Dictionary<uint, string>();
+        foreach (var materia in Sheet<Materia>())
+        {
+            var param = materia.BaseParam.ValueNullable?.Name.ExtractText() ?? "";
+            if (param.Length == 0)
+                continue;
+
+            for (var i = 0; i < materia.Item.Count && i < materia.Value.Count; i++)
+            {
+                if (materia.Item[i].RowId != 0 && materia.Value[i] != 0)
+                    lookup.TryAdd(materia.Item[i].RowId, $"{param} +{materia.Value[i]}");
+            }
+        }
+
+        return lookup;
     }
 
     public NpcEntity? GetNpc(uint rowId)
@@ -784,7 +1608,14 @@ public sealed class LuminaGameDataStore : IGameDataStore
         if (row == null || row.Value.Singular.IsEmpty)
             return null;
 
-        return new MountEntity(rowId, TitleCase(row.Value.Singular.ExtractText()), row.Value.Icon);
+        // DescriptionEnhanced is the mount-guide lore text; plain Description
+        // is the summon-action blurb and Tooltip a one-line joke.
+        var transient = Sheet<MountTransient>().GetRowOrDefault(rowId);
+        return new MountEntity(rowId, TitleCase(row.Value.Singular.ExtractText()), row.Value.Icon)
+        {
+            Description = transient?.DescriptionEnhanced.ExtractText() ?? "",
+            TeachingItem = TeachingItem(Teachers().ByMount, rowId),
+        };
     }
 
     public MinionEntity? GetMinion(uint rowId)
@@ -793,7 +1624,285 @@ public sealed class LuminaGameDataStore : IGameDataStore
         if (row == null || row.Value.Singular.IsEmpty)
             return null;
 
-        return new MinionEntity(rowId, TitleCase(row.Value.Singular.ExtractText()), row.Value.Icon);
+        var transient = Sheet<CompanionTransient>().GetRowOrDefault(rowId);
+        return new MinionEntity(rowId, TitleCase(row.Value.Singular.ExtractText()), row.Value.Icon)
+        {
+            Description = transient?.DescriptionEnhanced.ExtractText() ?? "",
+            BattleStats = row.Value.HP > 0 && transient != null
+                ? new MinionBattleStats(
+                    row.Value.HP,
+                    transient.Value.Attack,
+                    transient.Value.Defense,
+                    transient.Value.Speed,
+                    row.Value.Cost,
+                    transient.Value.SpecialActionName.ExtractText())
+                : null,
+            TeachingItem = TeachingItem(Teachers().ByMinion, rowId),
+        };
+    }
+
+    public OrchestrionEntity? GetOrchestrion(uint rowId)
+    {
+        var row = Sheet<Orchestrion>().GetRowOrDefault(rowId);
+        if (row == null || row.Value.Name.IsEmpty)
+            return null;
+
+        var ui = Sheet<OrchestrionUiparam>().GetRowOrDefault(rowId);
+        return new OrchestrionEntity(
+            rowId,
+            row.Value.Name.ExtractText(),
+            row.Value.Description.ExtractText(),
+            ui?.OrchestrionCategory.ValueNullable?.Name.ExtractText() ?? "")
+        {
+            TeachingItem = TeachingItem(Teachers().ByOrchestrion, rowId),
+        };
+    }
+
+    // Acquisition column meaning depends on the obtain type (probed 2026-09-01
+    // across all 476 cards): NPC-win types carry an ENpcResident id plus a
+    // Level row, duty-drop types a ContentFinderCondition id. Other types hold
+    // ids from unrelated sheets, so they must not be resolved.
+    private static readonly uint[] CardObtainNpcTypes = [6, 10];
+    private static readonly uint[] CardObtainDutyTypes = [2, 3];
+
+    public TripleTriadCardEntity? GetTripleTriadCard(uint rowId)
+    {
+        var row = Sheet<TripleTriadCard>().GetRowOrDefault(rowId);
+        if (row == null || row.Value.Name.IsEmpty)
+            return null;
+
+        var resident = Sheet<TripleTriadCardResident>().GetRowOrDefault(rowId);
+        if (resident == null)
+            return null;
+
+        var r = resident.Value;
+        var obtainType = r.AcquisitionType.RowId;
+
+        var npcName = "";
+        MapLocation? npcLocation = null;
+        if (CardObtainNpcTypes.Contains(obtainType) &&
+            Sheet<ENpcResident>().GetRowOrDefault(r.Acquisition.RowId) is { } npc && !npc.Singular.IsEmpty)
+        {
+            npcName = TitleCase(npc.Singular.ExtractText());
+            npcLocation = Sheet<Level>().GetRowOrDefault(r.Location.RowId) is { } level
+                ? ToMapLocation(level)
+                : FindLocation(r.Acquisition.RowId);
+        }
+
+        var dutyName = "";
+        if (CardObtainDutyTypes.Contains(obtainType) &&
+            Sheet<ContentFinderCondition>().GetRowOrDefault(r.Acquisition.RowId) is { } duty && !duty.Name.IsEmpty)
+            dutyName = duty.Name.ExtractText();
+
+        return new TripleTriadCardEntity(
+            rowId,
+            row.Value.Name.ExtractText(),
+            row.Value.Description.ExtractText(),
+            r.Top,
+            r.Bottom,
+            r.Left,
+            r.Right,
+            r.TripleTriadCardRarity.ValueNullable?.Stars ?? 0,
+            r.TripleTriadCardType.ValueNullable?.Name.ExtractText() ?? "",
+            r.SaleValue)
+        {
+            ObtainText = CleanObtainText(r.AcquisitionType.ValueNullable?.Text.ValueNullable?.Text.ExtractText() ?? ""),
+            NpcName = npcName,
+            NpcLocation = npcLocation,
+            DutyName = dutyName,
+            TeachingItem = TeachingItem(Teachers().ByCard, rowId),
+        };
+    }
+
+    // Obtain labels are Addon strings with their payloads stripped, so several
+    // come out as bare whitespace or end in a dangling colon.
+    private static string CleanObtainText(string text)
+    {
+        var cleaned = text.Trim().TrimEnd(':', '.');
+        return cleaned.Length > 1 ? cleaned : "";
+    }
+
+    private const uint QuestRowBlockStart = 0x10000;
+    private const uint QuestRowBlockEnd = 0x20000;
+
+    public EmoteEntity? GetEmote(uint rowId)
+    {
+        var row = Sheet<Emote>().GetRowOrDefault(rowId);
+        if (row == null || row.Value.Name.IsEmpty)
+            return null;
+
+        // UnlockLink is a quest row only in the quest id block; other values
+        // are unlock bits that a manual item's ItemAction may set. Bits taught
+        // neither way (old achievement-era emotes) stay blank for the wiki.
+        var link = row.Value.UnlockLink;
+        QuestLink? unlockQuest = null;
+        if (link is >= QuestRowBlockStart and < QuestRowBlockEnd &&
+            Sheet<Quest>().GetRowOrDefault(link) is { } quest && !quest.Name.IsEmpty)
+            unlockQuest = new QuestLink(link, quest.Name.ExtractText().Trim());
+
+        return new EmoteEntity(
+            rowId,
+            row.Value.Name.ExtractText(),
+            row.Value.TextCommand.ValueNullable?.Command.ExtractText() ?? "",
+            row.Value.EmoteCategory.ValueNullable?.Name.ExtractText() ?? "")
+        {
+            UnlockQuest = unlockQuest,
+            TeachingItem = link == 0 ? null : TeachingItem(Teachers().ByUnlockBit, link),
+        };
+    }
+
+    public VistaEntity? GetVista(uint rowId)
+    {
+        var row = Sheet<Adventure>().GetRowOrDefault(rowId);
+        if (row == null || row.Value.Name.IsEmpty)
+            return null;
+
+        // Impression is the log's riddle hint; Description the location lore
+        // (probed 2026-09-01: Barracuda Piers, Seasong Grotto).
+        var emote = row.Value.Emote.ValueNullable;
+        var command = emote?.TextCommand.ValueNullable?.Command.ExtractText() ?? "";
+        return new VistaEntity(
+            rowId,
+            row.Value.Name.ExtractText(),
+            row.Value.Impression.ExtractText(),
+            row.Value.Description.ExtractText())
+        {
+            Location = row.Value.Level.ValueNullable is { } level ? ToMapLocation(level) : null,
+            Region = row.Value.PlaceName.ValueNullable?.Name.ExtractText() ?? "",
+            Emote = command.Length > 0 ? command : emote?.Name.ExtractText() ?? "",
+            TimeWindow = VistaTimeWindow(row.Value.MinTime, row.Value.MaxTime),
+        };
+    }
+
+    // Vista windows are ET clock values with an inclusive end (800-1159 is the
+    // 8:00-12:00 window); 0-0 marks the always-available vistas.
+    private static string VistaTimeWindow(ushort minTime, ushort maxTime)
+    {
+        if (minTime == 0 && maxTime == 0)
+            return "";
+
+        var end = (ToEorzeaMinutes(maxTime) + 1) % (24 * 60);
+        return $"{ClockLabel(ToEorzeaMinutes(minTime))}-{ClockLabel(end == 0 ? 24 * 60 : end)} ET";
+    }
+
+    public HuntMarkEntity? GetHuntMark(uint rowId)
+    {
+        var row = Sheet<NotoriousMonster>().GetRowOrDefault(rowId);
+        if (row == null || row.Value.BNpcName.ValueNullable is not { } mark || mark.Singular.IsEmpty)
+            return null;
+
+        return new HuntMarkEntity(rowId, TitleCase(mark.Singular.ExtractText()), RankLetter(row.Value.Rank))
+        {
+            ZoneName = MarkZones().GetValueOrDefault(row.Value.BNpcName.RowId, ""),
+        };
+    }
+
+    private static string RankLetter(byte rank) => rank switch
+    {
+        1 => "B",
+        2 => "A",
+        3 => "S",
+        _ => "",
+    };
+
+    private Dictionary<uint, string> MarkZones()
+    {
+        var lookup = markZoneByBNpcName;
+        if (lookup == null)
+        {
+            lock (huntLock)
+            {
+                lookup = markZoneByBNpcName ??= BuildMarkZoneLookup();
+            }
+        }
+
+        return lookup;
+    }
+
+    private Dictionary<uint, string> BuildMarkZoneLookup()
+    {
+        // MobHuntTarget is the hunt-bill sheet, so only billed marks (the B
+        // ranks) appear; their PlaceName column holds the log sub-zone and is
+        // empty for marks, so the zone comes from the Map row instead.
+        var lookup = new Dictionary<uint, string>();
+        foreach (var target in Sheet<MobHuntTarget>())
+        {
+            if (target.Name.RowId == 0)
+                continue;
+
+            var zone = target.Map.ValueNullable?.PlaceName.ValueNullable?.Name.ExtractText() ?? "";
+            if (zone.Length > 0)
+                lookup.TryAdd(target.Name.RowId, zone);
+        }
+
+        return lookup;
+    }
+
+    public AetherCurrentZoneEntity? GetAetherCurrentZone(uint rowId)
+    {
+        var row = Sheet<AetherCurrentCompFlgSet>().GetRowOrDefault(rowId);
+        var zone = row?.Territory.ValueNullable?.PlaceName.ValueNullable?.Name.ExtractText() ?? "";
+        if (row == null || zone.Length == 0)
+            return null;
+
+        var quests = new List<QuestChainStep>();
+        foreach (var current in row.Value.AetherCurrents)
+        {
+            if (current.ValueNullable?.Quest is not { RowId: not 0 } questRef ||
+                questRef.ValueNullable is not { } quest || quest.Name.IsEmpty)
+                continue;
+
+            quests.Add(new QuestChainStep(
+                new QuestLink(questRef.RowId, quest.Name.ExtractText()),
+                quest.ClassJobLevel.FirstOrDefault(),
+                quest.IssuerLocation.ValueNullable is { } issuer ? ToMapLocation(issuer) : null));
+        }
+
+        return new AetherCurrentZoneEntity(rowId, zone, quests);
+    }
+
+    public FateEntity? GetFate(uint rowId)
+    {
+        var row = Sheet<Fate>().GetRowOrDefault(rowId);
+        if (row == null || row.Value.Name.IsEmpty)
+            return null;
+
+        // Fate.Location is an LGB instance id, not a Level row (probed
+        // 2026-09-01: 0 of 1697 resolve), so FATE cards carry no map pin.
+        var required = row.Value.RequiredQuest.ValueNullable;
+        return new FateEntity(
+            rowId,
+            row.Value.Name.ExtractText(),
+            row.Value.ClassJobLevel,
+            row.Value.Description.ExtractText())
+        {
+            RequiredQuest = required is { } quest && !quest.Name.IsEmpty
+                ? new QuestLink(row.Value.RequiredQuest.RowId, quest.Name.ExtractText())
+                : null,
+        };
+    }
+
+    public LeveEntity? GetLeve(uint rowId)
+    {
+        var row = Sheet<Leve>().GetRowOrDefault(rowId);
+        if (row == null || row.Value.Name.IsEmpty)
+            return null;
+
+        var leve = row.Value;
+        return new LeveEntity(
+            rowId,
+            leve.Name.ExtractText(),
+            leve.ClassJobLevel,
+            leve.LeveAssignmentType.ValueNullable?.Name.ExtractText() ?? "",
+            leve.ClassJobCategory.ValueNullable?.Name.ExtractText() ?? "",
+            leve.Description.ExtractText())
+        {
+            Levemete = leve.LevelLevemete.ValueNullable is { } level ? ToMapLocation(level) : null,
+            IssuedAt = leve.PlaceNameIssued.ValueNullable?.Name.ExtractText() ?? "",
+            AllowanceCost = leve.AllowanceCost,
+            ExpReward = leve.ExpReward,
+            GilReward = leve.GilReward,
+        };
     }
 
     public AchievementEntity? GetAchievement(uint rowId)
@@ -922,21 +2031,162 @@ public sealed class LuminaGameDataStore : IGameDataStore
         return levels;
     }
 
-    private static MapLocation? ToMapLocation(Level level)
+    private MapLocation? ToMapLocation(Level level)
     {
         var map = level.Map.ValueNullable;
         var territory = level.Territory.ValueNullable;
         if (map == null || territory == null)
             return null;
 
-        var zone = territory.Value.PlaceName.ValueNullable?.Name.ExtractText() ?? "";
-
         // World Z is the north-south axis; map Y comes from it, not from world Y (height).
         var mapX = MapCoordConverter.ToMapCoord(level.X, map.Value.SizeFactor, map.Value.OffsetX);
         var mapY = MapCoordConverter.ToMapCoord(level.Z, map.Value.SizeFactor, map.Value.OffsetY);
 
-        return new MapLocation(territory.Value.RowId, map.Value.RowId, mapX, mapY, zone);
+        return Locate(territory.Value, map.Value, mapX, mapY);
     }
+
+    private MapLocation Locate(TerritoryType territory, Map map, float mapX, float mapY)
+    {
+        var zone = territory.PlaceName.ValueNullable?.Name.ExtractText() ?? "";
+        var territoryId = PublicTerritory(territory, map);
+        return new MapLocation(territoryId, map.RowId, mapX, mapY, zone, NearestAetheryte(territoryId, map.RowId, mapX, mapY));
+    }
+
+    // Quest scenes place NPCs in private copies of a zone: separate
+    // TerritoryType rows that share the public map and its place name (probed
+    // 7.3: 405 of 446 mismatched NPC placements). A flag carrying the copy's
+    // id never matches the territory the player stands in, so it is swapped
+    // for the map's own territory when the names agree; sub-areas with their
+    // own name (the Sanctum of the Twelve inside East Shroud) keep theirs.
+    private static uint PublicTerritory(TerritoryType territory, Map map)
+    {
+        var owner = map.TerritoryType.ValueNullable;
+        if (owner == null || owner.Value.RowId == 0 || owner.Value.RowId == territory.RowId)
+            return territory.RowId;
+
+        var placed = territory.PlaceName.ValueNullable?.Name.ExtractText();
+        var owned = owner.Value.PlaceName.ValueNullable?.Name.ExtractText();
+        return placed != null && placed == owned ? owner.Value.RowId : territory.RowId;
+    }
+
+    // Nearest point on the same map by map-coordinate distance; maps without
+    // any marker (interiors, sub-zones like the Steps of Thal) fall back to
+    // the zone's designated aetheryte, which TerritoryType names for every
+    // town and field territory.
+    private NearestAetheryte? NearestAetheryte(uint territoryId, uint mapId, float mapX, float mapY)
+    {
+        var zoneAetheryte = Sheet<TerritoryType>().GetRowOrDefault(territoryId)?.Aetheryte.ValueNullable;
+        var zoneName = zoneAetheryte is { IsAetheryte: true } za ? za.PlaceName.ValueNullable?.Name.ExtractText() : null;
+        var zoneRowId = zoneName is { Length: > 0 } ? zoneAetheryte!.Value.RowId : 0;
+
+        if (!AetheryteMarkers().TryGetValue(mapId, out var markers))
+            return zoneRowId == 0 ? null : new NearestAetheryte(zoneName!, false, zoneRowId, zoneName!);
+
+        AetheryteMarker? best = null;
+        var bestDistance = float.MaxValue;
+        AetheryteMarker? bestAetheryte = null;
+        var bestAetheryteDistance = float.MaxValue;
+        foreach (var marker in markers)
+        {
+            var dx = marker.MapX - mapX;
+            var dy = marker.MapY - mapY;
+            var distance = (dx * dx) + (dy * dy);
+            if (distance < bestDistance)
+            {
+                best = marker;
+                bestDistance = distance;
+            }
+
+            if (!marker.Aethernet && distance < bestAetheryteDistance)
+            {
+                bestAetheryte = marker;
+                bestAetheryteDistance = distance;
+            }
+        }
+
+        if (best is not { } nearest)
+            return zoneRowId == 0 ? null : new NearestAetheryte(zoneName!, false, zoneRowId, zoneName!);
+
+        if (!nearest.Aethernet)
+            return new NearestAetheryte(nearest.Name, false, nearest.AetheryteRowId, nearest.Name);
+
+        // A shard is reached by teleporting to the zone's aetheryte first.
+        var (teleportId, teleportName) = zoneRowId != 0
+            ? (zoneRowId, zoneName!)
+            : bestAetheryte is { } fallback ? (fallback.AetheryteRowId, fallback.Name) : (0u, "");
+        return new NearestAetheryte(nearest.Name, true, teleportId, teleportName);
+    }
+
+    private Dictionary<uint, List<AetheryteMarker>> AetheryteMarkers()
+    {
+        var markers = aetherytesByMap;
+        if (markers == null)
+        {
+            lock (aetheryteLock)
+            {
+                markers = aetherytesByMap ??= BuildAetheryteMarkers();
+            }
+        }
+
+        return markers;
+    }
+
+    private Dictionary<uint, List<AetheryteMarker>> BuildAetheryteMarkers()
+    {
+        var byMap = new Dictionary<uint, List<AetheryteMarker>>();
+        var markers = SubrowSheet<MapMarker>();
+        var aetherytes = Sheet<Aetheryte>();
+        var places = Sheet<PlaceName>();
+        foreach (var map in Sheet<Map>())
+        {
+            var range = markers.GetRowOrDefault(map.MapMarkerRange);
+            if (range == null)
+                continue;
+
+            foreach (var marker in range.Value)
+            {
+                string name;
+                var aetheryteRowId = 0u;
+                if (marker.DataType == MapMarkerAetheryte)
+                {
+                    var aetheryte = aetherytes.GetRowOrDefault(marker.DataKey.RowId);
+                    if (aetheryte is not { IsAetheryte: true } a ||
+                        a.PlaceName.ValueNullable is not { } place || place.Name.IsEmpty)
+                        continue;
+
+                    name = place.Name.ExtractText();
+                    aetheryteRowId = a.RowId;
+                }
+                else if (marker.DataType == MapMarkerAethernet)
+                {
+                    var place = places.GetRowOrDefault(marker.DataKey.RowId);
+                    if (place == null || place.Value.Name.IsEmpty)
+                        continue;
+
+                    name = place.Value.Name.ExtractText();
+                }
+                else
+                {
+                    continue;
+                }
+
+                if (!byMap.TryGetValue(map.RowId, out var list))
+                    byMap[map.RowId] = list = [];
+
+                list.Add(new AetheryteMarker(
+                    aetheryteRowId,
+                    name,
+                    aetheryteRowId == 0,
+                    MapCoordConverter.FromMapPixel(marker.X, map.SizeFactor),
+                    MapCoordConverter.FromMapPixel(marker.Y, map.SizeFactor)));
+            }
+        }
+
+        return byMap;
+    }
+
+    private readonly record struct AetheryteMarker(
+        uint AetheryteRowId, string Name, bool Aethernet, float MapX, float MapY);
 
     private Dictionary<uint, Level> BuildNpcLevelLookup()
     {

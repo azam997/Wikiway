@@ -29,4 +29,6 @@ when a canary run fails.
 5. **In-game smoke.** Load the dev plugin and try:
    - `/wikiway momodi` - NPC card, map flag opens the Ul'dah map
    - `/wikiway the ultimate weapon` - quest card with prerequisites
-   - `/wikiway aether currents` - wiki results with a lead paragraph
+   - `/wikiway aether currents` - wiki rows under the WIKI RESULTS strip; Open reaches the page
+   - `/wikiway iron ore` - expanded card's gathering line ends in "Aetheryte: Horizon"; with
+     Teleporter or Lifestream loaded and Horizon attuned, a Teleport button sits left of Flag map

@@ -32,6 +32,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IClientState ClientState { get; private set; } = null!;
     [PluginService] internal static INotificationManager NotificationManager { get; private set; } = null!;
     [PluginService] internal static ITextureProvider TextureProvider { get; private set; } = null!;
+    [PluginService] internal static IAetheryteList AetheryteList { get; private set; } = null!;
 
     private const string CommandName = "/wikiway";
     private const string CommandAlias = "/wway";
@@ -42,6 +43,7 @@ public sealed class Plugin : IDalamudPlugin
     public ICacheStore CacheStore { get; }
     internal Fonts Fonts { get; }
     internal QuestProgressTracker QuestProgress { get; }
+    internal TeleportService Teleport { get; }
     public readonly WindowSystem WindowSystem = new("Wikiway");
 
     private readonly MainWindow mainWindow;
@@ -79,6 +81,7 @@ public sealed class Plugin : IDalamudPlugin
         var wikiClient = new ConsoleGamesWikiClient(httpClient);
         var gameDataStore = new LuminaGameDataStore(DataManager.GameData);
         QuestProgress = new QuestProgressTracker();
+        Teleport = new TeleportService();
 
         // Spoiler gating fails OPEN while logged out or before the first
         // progress snapshot - a lookup tool that hides data it can't verify
@@ -215,7 +218,9 @@ public sealed class Plugin : IDalamudPlugin
                 // "duty" from when duties had their own tab - Other covers them now.
                 // "quest" and "unlock" share the merged Quests & Unlocks tab.
                 "quest" or "unlock" or "unlockable" or "area" => SearchCategory.Unlocks,
-                "duty" => SearchCategory.Other,
+                // Orchestrion rolls, vistas, hunt marks, FATEs and leves have
+                // no tab of their own and ride the unfiltered Other search.
+                "duty" or "orchestrion" or "vista" or "hunt" or "mark" or "fate" or "leve" => SearchCategory.Other,
                 _ => (SearchCategory?)null,
             };
             if (category is { } picked)

@@ -83,6 +83,14 @@ public sealed class LocalGameDataProvider : ISearchProvider
         EntityKind.Minion => store.GetMinion(entry.RowId),
         EntityKind.Achievement => store.GetAchievement(entry.RowId),
         EntityKind.Duty or EntityKind.Unlockable => store.GetDuty(entry.RowId),
+        EntityKind.Orchestrion => store.GetOrchestrion(entry.RowId),
+        EntityKind.TripleTriadCard => store.GetTripleTriadCard(entry.RowId),
+        EntityKind.Emote => store.GetEmote(entry.RowId),
+        EntityKind.Vista => store.GetVista(entry.RowId),
+        EntityKind.HuntMark => store.GetHuntMark(entry.RowId),
+        EntityKind.AetherCurrentZone => store.GetAetherCurrentZone(entry.RowId),
+        EntityKind.Fate => store.GetFate(entry.RowId),
+        EntityKind.Leve => store.GetLeve(entry.RowId),
         _ => null,
     };
 }

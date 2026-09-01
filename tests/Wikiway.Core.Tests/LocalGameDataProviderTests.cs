@@ -71,6 +71,14 @@ public class LocalGameDataProviderTests
         public MountEntity? GetMount(uint rowId) => null;
         public MinionEntity? GetMinion(uint rowId) => null;
         public AchievementEntity? GetAchievement(uint rowId) => null;
+        public OrchestrionEntity? GetOrchestrion(uint rowId) => null;
+        public TripleTriadCardEntity? GetTripleTriadCard(uint rowId) => null;
+        public EmoteEntity? GetEmote(uint rowId) => null;
+        public VistaEntity? GetVista(uint rowId) => null;
+        public HuntMarkEntity? GetHuntMark(uint rowId) => null;
+        public AetherCurrentZoneEntity? GetAetherCurrentZone(uint rowId) => null;
+        public FateEntity? GetFate(uint rowId) => null;
+        public LeveEntity? GetLeve(uint rowId) => null;
         public DutyEntity? FindDutyByTerritory(uint territoryTypeId) => null;
         public string? GetItemName(uint rowId) => Find<ItemEntity>(rowId)?.Name;
         public string? GetNpcName(uint rowId) => Find<NpcEntity>(rowId)?.Name;

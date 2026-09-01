@@ -132,6 +132,7 @@ public partial class MainWindow : Window, IDisposable
     public override void Draw()
     {
         plugin.QuestProgress.RefreshIfStale();
+        plugin.Teleport.RefreshIfStale();
 
         if (queuedNavigation is { } nav)
         {
@@ -480,11 +481,22 @@ public partial class MainWindow : Window, IDisposable
                 session.Response = session.Pending.Result;
                 session.AboveGate.Clear();
                 session.BelowGate.Clear();
+                session.Wiki.Clear();
+                // Wiki rows skip the score gate: their scores rank data-page
+                // quality, not relevance, and burying them under "low
+                // confidence" hid the path to the wiki page.
                 foreach (var hit in session.Response.Results)
-                    (hit.Score < ScoreGate ? session.BelowGate : session.AboveGate).Add(hit);
+                {
+                    if (hit is WikiPageResult or WikiSectionsResult)
+                        session.Wiki.Add(hit);
+                    else
+                        (hit.Score < ScoreGate ? session.BelowGate : session.AboveGate).Add(hit);
+                }
+
                 session.HasGameResult = session.AboveGate.Exists(hit => hit is EntityCardResult);
                 session.LowRelevanceOpen = false;
                 session.MoreOpen = false;
+                session.WikiOpen = true;
                 session.ExpandedRows.Clear();
                 session.ExpandedChains.Clear();
                 session.ExpandedScenes.Clear();

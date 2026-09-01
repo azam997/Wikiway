@@ -11,12 +11,14 @@ internal sealed class SearchSession : IDisposable
     public string QueryInput = string.Empty;
     public readonly List<SearchResult> AboveGate = [];
     public readonly List<SearchResult> BelowGate = [];
+    public readonly List<SearchResult> Wiki = [];
     public readonly HashSet<string> ExpandedRows = [];
     public readonly HashSet<(uint QuestRowId, int ChainIndex)> ExpandedChains = [];
     public readonly HashSet<string> ExpandedScenes = [];
     public readonly Dictionary<string, List<SceneGroup>> SceneGroups = [];
     public bool LowRelevanceOpen;
     public bool MoreOpen;
+    public bool WikiOpen;
     public bool HasGameResult;
     public CancellationTokenSource? Cts;
     public Task<QueryResponse>? Pending;

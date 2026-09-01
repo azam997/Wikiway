@@ -13,6 +13,14 @@ public interface IGameDataStore
     MinionEntity? GetMinion(uint rowId);
     AchievementEntity? GetAchievement(uint rowId);
     DutyEntity? GetDuty(uint rowId);
+    OrchestrionEntity? GetOrchestrion(uint rowId);
+    TripleTriadCardEntity? GetTripleTriadCard(uint rowId);
+    EmoteEntity? GetEmote(uint rowId);
+    VistaEntity? GetVista(uint rowId);
+    HuntMarkEntity? GetHuntMark(uint rowId);
+    AetherCurrentZoneEntity? GetAetherCurrentZone(uint rowId);
+    FateEntity? GetFate(uint rowId);
+    LeveEntity? GetLeve(uint rowId);
 
     DutyEntity? FindDutyByTerritory(uint territoryTypeId);
 
@@ -34,6 +42,14 @@ public enum EntityKind
     Duty,
     Unlockable,
     Gatherable,
+    Orchestrion,
+    TripleTriadCard,
+    Emote,
+    Vista,
+    HuntMark,
+    AetherCurrentZone,
+    Fate,
+    Leve,
 }
 
 public sealed record NameIndexEntry(EntityKind Kind, uint RowId, string Name);

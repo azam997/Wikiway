@@ -11,6 +11,7 @@ internal enum TagStyle
     Accent,
     Neutral,
     Outline,
+    Wiki,
 }
 
 // Each helper draws one widget or primitive in the current font; layout stays
@@ -42,12 +43,24 @@ internal static class Widgets
         return clicked;
     }
 
-    // Map-flag actions use the Highlight color and carry a flag glyph; measure
-    // widths against FlagLabel so right-alignment stays exact.
+    // Map actions use the Highlight color and carry a glyph; measure widths
+    // against the same label helpers so right-alignment stays exact.
     public static string FlagLabel(string text) =>
         $"{FontAwesomeIcon.Flag.ToIconString()} {text}";
 
-    public static bool FlagButton(string text, string id)
+    // Empty text gives the icon-only form used on compact rows.
+    public static string TeleportLabel(string text) =>
+        text.Length == 0
+            ? FontAwesomeIcon.LocationArrow.ToIconString()
+            : $"{FontAwesomeIcon.LocationArrow.ToIconString()} {text}";
+
+    public static bool FlagButton(string text, string id) =>
+        HighlightButton($"{FlagLabel(text)}##{id}");
+
+    public static bool TeleportButton(string text, string id) =>
+        HighlightButton($"{TeleportLabel(text)}##{id}");
+
+    private static bool HighlightButton(string label)
     {
         ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.HighlightHover);
@@ -55,10 +68,28 @@ internal static class Widgets
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
         ImGui.PushStyleColor(ImGuiCol.Border, Theme.Highlight);
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
-        var clicked = ImGui.Button($"{FlagLabel(text)}##{id}");
+        var clicked = ImGui.Button(label);
         ImGui.PopStyleVar();
         ImGui.PopStyleColor(5);
         return clicked;
+    }
+
+    // Inline hyperlink text: hover shows an underline and hand cursor, click
+    // returns true. Text items carry no ImGui id, so rows' IsAnyItemHovered
+    // click guards don't see these - keep them out of header toggle zones.
+    public static bool LinkText(string text)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent300);
+        ImGui.TextUnformatted(text);
+        ImGui.PopStyleColor();
+        if (!ImGui.IsItemHovered())
+            return false;
+
+        ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+        var min = ImGui.GetItemRectMin();
+        var max = ImGui.GetItemRectMax();
+        ImGui.GetWindowDrawList().AddLine(min with { Y = max.Y }, max, Theme.Accent300U);
+        return ImGui.IsMouseClicked(ImGuiMouseButton.Left);
     }
 
     public static void Tag(string text, TagStyle style)
@@ -74,12 +105,18 @@ internal static class Widgets
         if (style == TagStyle.Outline)
             dl.AddRect(pos, pos + size, Theme.AccentU, rounding);
         else
-            dl.AddRectFilled(pos, pos + size, style == TagStyle.Accent ? Theme.Accent800U : Theme.Neutral800U, rounding);
+            dl.AddRectFilled(pos, pos + size, style switch
+            {
+                TagStyle.Accent => Theme.Accent800U,
+                TagStyle.Wiki => Theme.Highlight800U,
+                _ => Theme.Neutral800U,
+            }, rounding);
 
         dl.AddText(pos + pad, style switch
         {
             TagStyle.Accent => Theme.Accent100U,
             TagStyle.Outline => Theme.Accent300U,
+            TagStyle.Wiki => Theme.Highlight100U,
             _ => Theme.Neutral100U,
         }, label);
 

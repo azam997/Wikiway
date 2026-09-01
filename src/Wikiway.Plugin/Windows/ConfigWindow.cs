@@ -83,8 +83,20 @@ public class ConfigWindow : Window
 
         ImGui.SameLine();
         ImGuiComponents.HelpMarker(
-            "Equippable items get an Equipment section on their expanded card. " +
-            "Ex: item level, stats, materia slots, repair and resale - read from the game files.");
+            "Equippable items get an Equipment section and food or medicine a Consumable " +
+            "section on the expanded card. Ex: item level, stats, buff duration - read from the game files.");
+
+        var itemUsage = config.ShowItemUsage;
+        if (ImGui.Checkbox("Show usage on item cards", ref itemUsage))
+        {
+            config.ShowItemUsage = itemUsage;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "Items used somewhere get a Usage section on their expanded card. " +
+            "Ex: recipes, custom deliveries, collectable turn-ins, treasure map sites, materia stats.");
 
         var cutscenes = config.ShowCutsceneAppearances;
         if (ImGui.Checkbox("Show cutscene appearances on NPC cards", ref cutscenes))
@@ -109,6 +121,30 @@ public class ConfigWindow : Window
         ImGuiComponents.HelpMarker(
             "NPC results list at most 6 map pins; a summary line counts the rest. " +
             "Turn off to always list every location.");
+
+        var nearestAetheryte = config.ShowNearestAetheryte;
+        if (ImGui.Checkbox("Show the nearest aetheryte on map locations", ref nearestAetheryte))
+        {
+            config.ShowNearestAetheryte = nearestAetheryte;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "Each location line names the closest aetheryte on that map, or the closest " +
+            "aethernet shard inside cities. Ex: Western Thanalan 27.5, 17.0 · Aetheryte: Horizon");
+
+        var teleport = config.TeleportButtonEnabled;
+        if (ImGui.Checkbox("Add a Teleport button next to Flag map", ref teleport))
+        {
+            config.TeleportButtonEnabled = teleport;
+            config.Save();
+        }
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(
+            "Needs the Teleporter or Lifestream plugin. The button only appears for " +
+            "aetherytes you have attuned to, and teleports there when clicked.");
 
         var spoilers = config.SpoilerProtectionEnabled;
         if (ImGui.Checkbox("Hide spoilers past your MSQ progress", ref spoilers))

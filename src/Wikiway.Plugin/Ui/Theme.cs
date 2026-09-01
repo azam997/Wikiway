@@ -3,8 +3,8 @@ using System.Numerics;
 namespace Wikiway.Plugin.Ui;
 
 // Nocturne token block; hex values are authoritative in the design handoffs.
-// Accent ramp is the original purple; Highlight keeps the Flare pink for
-// inline emphasis text only.
+// Accent ramp is the original purple; the Highlight steps keep the Flare pink
+// for inline emphasis and the wiki tag.
 internal static class Theme
 {
     public static readonly Vector4 Bg = FromHex(0x161826);
@@ -18,6 +18,8 @@ internal static class Theme
     public static readonly Vector4 Accent800 = FromHex(0x423a6a);
     public static readonly Vector4 Accent900 = FromHex(0x2b2741);
     public static readonly Vector4 Highlight = FromHex(0xff6bc4);
+    public static readonly Vector4 Highlight100 = FromHex(0xfff1f8);
+    public static readonly Vector4 Highlight800 = FromHex(0x6f1b51);
     public static readonly Vector4 Neutral100 = FromHex(0xf3f5fe);
     public static readonly Vector4 Neutral300 = FromHex(0xcfd3e5);
     public static readonly Vector4 Neutral400 = FromHex(0xb2b6ca);
@@ -37,6 +39,8 @@ internal static class Theme
     public static readonly uint Accent700U = Pack(Accent700);
     public static readonly uint Accent800U = Pack(Accent800);
     public static readonly uint Accent900U = Pack(Accent900);
+    public static readonly uint Highlight100U = Pack(Highlight100);
+    public static readonly uint Highlight800U = Pack(Highlight800);
     public static readonly uint Neutral100U = Pack(Neutral100);
     public static readonly uint Neutral400U = Pack(Neutral400);
     public static readonly uint Neutral500U = Pack(Neutral500);

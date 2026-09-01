@@ -14,8 +14,11 @@ public class Configuration : IPluginConfiguration
     public bool SoloDutyToastEnabled { get; set; } = true;
     public bool ShowUnlockRequirements { get; set; } = true;
     public bool ShowEquipmentStats { get; set; } = true;
+    public bool ShowItemUsage { get; set; } = true;
     public bool ShowCutsceneAppearances { get; set; } = true;
     public bool CapNpcLocationPins { get; set; } = true;
+    public bool ShowNearestAetheryte { get; set; } = true;
+    public bool TeleportButtonEnabled { get; set; } = true;
     public bool ActiveQuestPickerEnabled { get; set; } = true;
     public bool SpoilerProtectionEnabled { get; set; } = true;
     public bool TutorialSeen { get; set; } = false;

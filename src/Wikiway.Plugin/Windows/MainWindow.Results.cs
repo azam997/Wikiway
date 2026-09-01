@@ -61,6 +61,9 @@ public partial class MainWindow
         if (Active.AboveGate.Count > InitialRows)
             DrawMoreStrip();
 
+        if (Active.Wiki.Count > 0)
+            DrawWikiStrip();
+
         if (Active.BelowGate.Count > 0)
             DrawLowRelevanceStrip();
 
@@ -185,10 +188,36 @@ public partial class MainWindow
                 DrawAchievementRow(card, achievement);
                 return true;
             case EntityCardResult { Entity: MountEntity mount } card:
-                DrawIconTitleRow(card, "Mount", mount.Icon);
+                DrawIconTitleRow(card, "Mount", mount.Icon, mount.Description);
                 return true;
             case EntityCardResult { Entity: MinionEntity minion } card:
-                DrawIconTitleRow(card, "Minion", minion.Icon);
+                DrawIconTitleRow(card, "Minion", minion.Icon, minion.Description);
+                return true;
+            case EntityCardResult { Entity: OrchestrionEntity orchestrion } card:
+                DrawIconTitleRow(card,
+                    orchestrion.Category.Length > 0 ? $"Orchestrion · {orchestrion.Category}" : "Orchestrion",
+                    orchestrion.TeachingItem?.Icon ?? 0, orchestrion.Description);
+                return true;
+            case EntityCardResult { Entity: TripleTriadCardEntity tripleTriad } card:
+                DrawTripleTriadRow(card, tripleTriad);
+                return true;
+            case EntityCardResult { Entity: EmoteEntity emote } card:
+                DrawEmoteRow(card, emote);
+                return true;
+            case EntityCardResult { Entity: VistaEntity vista } card:
+                DrawVistaRow(card, vista);
+                return true;
+            case EntityCardResult { Entity: HuntMarkEntity mark } card:
+                DrawHuntMarkRow(card, mark);
+                return true;
+            case EntityCardResult { Entity: AetherCurrentZoneEntity currents } card:
+                DrawAetherCurrentRow(card, currents);
+                return true;
+            case EntityCardResult { Entity: FateEntity fate } card:
+                DrawFateRow(card, fate);
+                return true;
+            case EntityCardResult { Entity: LeveEntity leve } card:
+                DrawLeveRow(card, leve);
                 return true;
             case WikiPageResult wiki:
                 DrawWikiPageRow(wiki);
@@ -242,7 +271,6 @@ public partial class MainWindow
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
-        var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag map"));
         var shown = locations.Count;
         if (plugin.Configuration.CapNpcLocationPins && locations.Count > MaxNpcLocationLines)
             shown = MaxNpcLocationLines;
@@ -260,14 +288,12 @@ public partial class MainWindow
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
             ImGui.TextUnformatted(Coords(loc.MapX, loc.MapY));
             ImGui.PopStyleColor();
+            DrawAetheryteTail(loc, LocationActionsWidth(loc));
             fonts.Body13.Pop();
 
             fonts.Citation12.Push();
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
-            if (Widgets.FlagButton("Flag map", $"flag{npcRowId}-{i}"))
-                MapLinkOpener.Open(loc);
+            DrawLocationActions(loc, $"flag{npcRowId}-{i}");
             ImGui.PopStyleVar();
             fonts.Citation12.Pop();
         }
@@ -303,6 +329,8 @@ public partial class MainWindow
         RowTag(item.Category.Length > 0 ? $"Item · {item.Category}" : "Item", TagStyle.Accent);
         if (plugin.Configuration.ShowEquipmentStats && item.Equipment is { } gear)
             RowTag($"ilvl {gear.ItemLevel} · Lv. {gear.EquipLevel}", TagStyle.Outline);
+        if (plugin.Configuration.ShowItemUsage && item.Usage is { MateriaTag.Length: > 0 } materia)
+            RowTag(materia.MateriaTag, TagStyle.Outline);
         RowCitation(card.Source.Label);
         RowDetailControls(card);
 
@@ -359,14 +387,12 @@ public partial class MainWindow
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
             ImGui.TextUnformatted(Coords(start.MapX, start.MapY));
             ImGui.PopStyleColor();
+            DrawAetheryteTail(start, LocationActionsWidth(start));
             fonts.Body13.Pop();
 
             fonts.Citation12.Push();
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(RowRightEdge() - FlagButtonWidth(Widgets.FlagLabel("Flag map")));
-            if (Widgets.FlagButton("Flag map", $"queststart{quest.RowId}"))
-                MapLinkOpener.Open(start);
+            DrawLocationActions(start, $"queststart{quest.RowId}");
             ImGui.PopStyleVar();
             fonts.Citation12.Pop();
         }
@@ -450,16 +476,242 @@ public partial class MainWindow
         }
     }
 
-    private void DrawIconTitleRow(EntityCardResult card, string tag, ushort icon)
+    private void DrawIconTitleRow(EntityCardResult card, string tag, ushort icon, string description = "")
     {
+        var scale = ImGuiHelpers.GlobalScale;
+
         DrawIconTile(icon);
-        ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
+        ImGui.SameLine(0, Theme.Space3 * scale);
         ImGui.BeginGroup();
         RowTitle(card.Entity.Name);
         RowTag(tag, TagStyle.Accent);
         RowCitation(card.Source.Label);
         RowDetailControls(card);
+
+        // The expanded detail shows the full text, so the ellipsized line
+        // only appears while collapsed.
+        if (description.Length > 0 && !Active.ExpandedRows.Contains(RowKey(card)))
+        {
+            plugin.Fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+            Widgets.TextEllipsized(description, ImGui.GetContentRegionAvail().X - (Theme.Space4 * scale));
+            ImGui.PopStyleColor();
+            plugin.Fonts.Body13.Pop();
+        }
+
         ImGui.EndGroup();
+    }
+
+    private void DrawTripleTriadRow(EntityCardResult card, TripleTriadCardEntity tripleTriad)
+    {
+        var fonts = plugin.Fonts;
+
+        DrawIconTile(tripleTriad.TeachingItem?.Icon ?? 0);
+        ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
+        ImGui.BeginGroup();
+        RowTitle(tripleTriad.Name);
+        RowTag(tripleTriad.CardType.Length > 0
+            ? $"Triple Triad · {tripleTriad.CardType}"
+            : "Triple Triad card", TagStyle.Accent);
+        if (tripleTriad.Stars > 0)
+            RowTag($"{tripleTriad.Stars}-star", TagStyle.Outline);
+        RowCitation(card.Source.Label);
+        RowDetailControls(card);
+
+        fonts.Body13.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+        ImGui.TextUnformatted(
+            $"Top {tripleTriad.Top} · Bottom {tripleTriad.Bottom} · Left {tripleTriad.Left} · Right {tripleTriad.Right}");
+        ImGui.PopStyleColor();
+        fonts.Body13.Pop();
+        ImGui.EndGroup();
+    }
+
+    private void DrawEmoteRow(EntityCardResult card, EmoteEntity emote)
+    {
+        var fonts = plugin.Fonts;
+
+        RowTitle(emote.Name);
+        RowTag(emote.Category.Length > 0 ? $"Emote · {emote.Category}" : "Emote", TagStyle.Accent);
+        RowCitation(card.Source.Label);
+        RowDetailControls(card);
+
+        if (emote.Command.Length > 0)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+            ImGui.TextUnformatted(emote.Command);
+            ImGui.PopStyleColor();
+            fonts.Body13.Pop();
+        }
+    }
+
+    private void DrawVistaRow(EntityCardResult card, VistaEntity vista)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        RowTitle(vista.Name);
+        RowTag(vista.Region.Length > 0 ? $"Vista · {vista.Region}" : "Vista", TagStyle.Accent);
+        RowCitation(card.Source.Label);
+        RowDetailControls(card);
+
+        if (vista.Location is { } loc)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.MapPin.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.TextUnformatted(loc.ZoneName);
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+            ImGui.TextUnformatted(Coords(loc.MapX, loc.MapY));
+            ImGui.PopStyleColor();
+            DrawAetheryteTail(loc, LocationActionsWidth(loc));
+            fonts.Body13.Pop();
+
+            fonts.Citation12.Push();
+            ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+            DrawLocationActions(loc, $"vista{vista.RowId}");
+            ImGui.PopStyleVar();
+            fonts.Citation12.Pop();
+        }
+
+        // The expanded detail shows the full hint, so the ellipsized line only
+        // appears while collapsed.
+        if (vista.Hint.Length > 0 && !Active.ExpandedRows.Contains(RowKey(card)))
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+            Widgets.TextEllipsized(vista.Hint, ImGui.GetContentRegionAvail().X - (Theme.Space4 * scale));
+            ImGui.PopStyleColor();
+            fonts.Body13.Pop();
+        }
+    }
+
+    private void DrawHuntMarkRow(EntityCardResult card, HuntMarkEntity mark)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        RowTitle(mark.Name);
+        RowTag("Hunt mark", TagStyle.Accent);
+        if (mark.Rank.Length > 0)
+            RowTag($"Rank {mark.Rank}", TagStyle.Outline);
+        RowCitation(card.Source.Label);
+        RowDetailControls(card);
+
+        if (mark.ZoneName.Length > 0)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.MapPin.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.TextUnformatted(mark.ZoneName);
+            fonts.Body13.Pop();
+        }
+
+        fonts.Citation12.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+        ImGui.TextUnformatted("Spawn points live on the wiki.");
+        ImGui.PopStyleColor();
+        fonts.Citation12.Pop();
+    }
+
+    private void DrawAetherCurrentRow(EntityCardResult card, AetherCurrentZoneEntity currents)
+    {
+        var fonts = plugin.Fonts;
+
+        RowTitle(currents.Name);
+        RowTag("Aether currents", TagStyle.Accent);
+        RowCitation(card.Source.Label);
+        RowDetailControls(card);
+
+        fonts.Body13.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+        var count = currents.QuestCurrents.Count;
+        ImGui.TextUnformatted(count == 1
+            ? "1 current from a quest · the rest sit in the open world"
+            : $"{count} currents from quests · the rest sit in the open world");
+        ImGui.PopStyleColor();
+        fonts.Body13.Pop();
+    }
+
+    private void DrawFateRow(EntityCardResult card, FateEntity fate)
+    {
+        var fonts = plugin.Fonts;
+
+        RowTitle(fate.Name);
+        RowTag("FATE", TagStyle.Accent);
+        if (fate.Level > 0)
+            RowTag($"Level {fate.Level}", TagStyle.Outline);
+        RowCitation(card.Source.Label);
+        RowDetailControls(card);
+
+        if (fate.Description.Length > 0)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+            ImGui.TextWrapped(fate.Description);
+            ImGui.PopStyleColor();
+            fonts.Body13.Pop();
+        }
+    }
+
+    private void DrawLeveRow(EntityCardResult card, LeveEntity leve)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        RowTitle(leve.Name);
+        RowTag(leve.Type.Length > 0 ? $"Levequest · {leve.Type}" : "Levequest", TagStyle.Accent);
+        if (leve.Level > 0)
+        {
+            RowTag(leve.JobCategory.Length > 0
+                ? $"Level {leve.Level} · {leve.JobCategory}"
+                : $"Level {leve.Level}", TagStyle.Outline);
+        }
+
+        RowCitation(card.Source.Label);
+        RowDetailControls(card);
+
+        if (leve.Levemete is { } loc)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.MapPin.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            var place = leve.IssuedAt.Length > 0 && leve.IssuedAt != loc.ZoneName
+                ? $"Levemete: {leve.IssuedAt}"
+                : "Levemete";
+            ImGui.TextUnformatted(place);
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+            ImGui.TextUnformatted($"{loc.ZoneName} {Coords(loc.MapX, loc.MapY)}");
+            ImGui.PopStyleColor();
+            DrawAetheryteTail(loc, LocationActionsWidth(loc));
+            fonts.Body13.Pop();
+
+            fonts.Citation12.Push();
+            ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+            DrawLocationActions(loc, $"leve{leve.RowId}");
+            ImGui.PopStyleVar();
+            fonts.Citation12.Pop();
+        }
+
+        // The expanded detail shows the full brief, so the ellipsized line
+        // only appears while collapsed.
+        if (leve.Description.Length > 0 && !Active.ExpandedRows.Contains(RowKey(card)))
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+            Widgets.TextEllipsized(leve.Description, ImGui.GetContentRegionAvail().X - (Theme.Space4 * scale));
+            ImGui.PopStyleColor();
+            fonts.Body13.Pop();
+        }
     }
 
     private void DrawWikiPageRow(WikiPageResult wiki)
@@ -467,7 +719,7 @@ public partial class MainWindow
         var fonts = plugin.Fonts;
 
         RowTitle(wiki.Title);
-        RowTag("Wiki page", TagStyle.Neutral);
+        RowTag("Wiki", TagStyle.Wiki);
         RowCitation(wiki.Source.Label);
         if (HeaderAction("Open", $"wiki{wiki.Title}"))
             BrowserOpener.Open(wiki.PageUrl);
@@ -485,7 +737,7 @@ public partial class MainWindow
         var fonts = plugin.Fonts;
 
         RowTitle(wiki.Title);
-        RowTag("Wiki sections", TagStyle.Neutral);
+        RowTag("Wiki", TagStyle.Wiki);
         RowCitation(wiki.Source.Label);
         if (HeaderAction("Open in browser", $"wikisec{wiki.Title}"))
             BrowserOpener.Open(wiki.PageUrl);
@@ -567,6 +819,24 @@ public partial class MainWindow
                 RowDivider();
                 ImGui.PushID(i);
                 DrawRow(Active.AboveGate[i], topRow: false);
+                ImGui.PopID();
+            }
+        }
+    }
+
+    private void DrawWikiStrip()
+    {
+        if (ToggleStrip("##wikiway-wiki", $"{Active.Wiki.Count} WIKI RESULTS", Active.WikiOpen))
+            Active.WikiOpen = !Active.WikiOpen;
+
+        if (Active.WikiOpen)
+        {
+            for (var i = 0; i < Active.Wiki.Count; i++)
+            {
+                RowDivider();
+                // Offset past both gate lists so the three lists never collide.
+                ImGui.PushID(2000 + i);
+                DrawRow(Active.Wiki[i], topRow: false);
                 ImGui.PopID();
             }
         }
@@ -697,8 +967,20 @@ public partial class MainWindow
         !IsSpoilerGated(card)
         && (card.WikiSections.Count > 0
             || card.Entity is ItemEntity { Acquisition: not null }
-            || (plugin.Configuration.ShowEquipmentStats && card.Entity is ItemEntity { Equipment: not null })
+            || (plugin.Configuration.ShowEquipmentStats
+                && card.Entity is ItemEntity { Equipment: not null } or ItemEntity { Food: not null })
+            || (plugin.Configuration.ShowItemUsage && card.Entity is ItemEntity { Usage: not null })
             || ShowNpcTabs(card)
+            || card.Entity is MountEntity { TeachingItem: not null } or MountEntity { Description.Length: > 0 }
+                or MinionEntity { TeachingItem: not null } or MinionEntity { BattleStats: not null }
+                or MinionEntity { Description.Length: > 0 }
+                or OrchestrionEntity { TeachingItem: not null } or OrchestrionEntity { Description.Length: > 0 }
+                or TripleTriadCardEntity
+                or EmoteEntity { TeachingItem: not null } or EmoteEntity { UnlockQuest: not null }
+                or VistaEntity
+                or AetherCurrentZoneEntity { QuestCurrents.Count: > 0 }
+                or FateEntity { RequiredQuest: not null }
+                or LeveEntity { Description.Length: > 0 }
             || (plugin.Configuration.ShowUnlockRequirements
                 && card.Entity is QuestEntity { UnlockChains.Count: > 0 }
                     or QuestEntity { MsqRequirement: not null }
@@ -740,189 +1022,380 @@ public partial class MainWindow
 
     private void DrawCardDetail(EntityCardResult card)
     {
-        var scale = ImGuiHelpers.GlobalScale;
-        var fonts = plugin.Fonts;
-
         if (card.Entity is NpcEntity npcEntity && ShowNpcTabs(card))
             DrawNpcTabs(card, npcEntity);
 
         if (plugin.Configuration.ShowEquipmentStats && card.Entity is ItemEntity { Equipment: { } equipment })
             DrawEquipment(equipment);
 
-        if (card.Entity is ItemEntity { Acquisition: { } acquisition })
+        if (plugin.Configuration.ShowEquipmentStats && card.Entity is ItemEntity { Food: { } food })
+            DrawConsumable(food);
+
+        if (card.Entity is ItemEntity { Acquisition: { } itemAcquisition })
         {
             ImGui.Spacing();
             DetailLabel("ACQUISITION");
+            DrawAcquisitionSources(card.Entity.RowId, itemAcquisition);
+        }
 
-            foreach (var recipe in acquisition.Recipes)
+        if (plugin.Configuration.ShowItemUsage && card.Entity is ItemEntity { Usage: { } usage })
+            DrawUsage(usage);
+
+        DrawCollectionDetail(card);
+
+        if (card.Entity is VistaEntity vista)
+            DrawVistaDetail(vista);
+
+        if (card.Entity is AetherCurrentZoneEntity { QuestCurrents.Count: > 0 } currents)
+            DrawAetherCurrentsDetail(currents);
+
+        if (card.Entity is FateEntity { RequiredQuest: { } fateQuest })
+            DrawFateRequirement(fateQuest);
+
+        if (card.Entity is LeveEntity leve)
+            DrawLeveDetail(leve);
+
+        DrawTrailingDetail(card);
+    }
+
+    // The per-source loops shared by the item card and every teaching-item reuse.
+    private void DrawAcquisitionSources(uint ownerRowId, ItemAcquisition acquisition)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        foreach (var recipe in acquisition.Recipes)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.Hammer.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            ImGui.TextUnformatted(recipe.Level > 0 ? $"{recipe.CraftType} · Level {recipe.Level}" : recipe.CraftType);
+            ImGui.PopStyleColor();
+            if (recipe.MasterBook.Length > 0)
             {
-                fonts.Body13.Push();
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
-                ImGui.TextUnformatted(FontAwesomeIcon.Hammer.ToIconString());
-                ImGui.PopStyleColor();
-                ImGui.SameLine(0, Theme.Space3 * scale);
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
-                ImGui.TextUnformatted(recipe.Level > 0 ? $"{recipe.CraftType} · Level {recipe.Level}" : recipe.CraftType);
-                ImGui.PopStyleColor();
-                if (recipe.Ingredients.Count > 0)
-                {
-                    ImGui.SameLine(0, Theme.Space3 * scale);
-                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
-                    ImGui.TextUnformatted("— " + string.Join(", ", recipe.Ingredients));
-                    ImGui.PopStyleColor();
-                }
-
-                fonts.Body13.Pop();
-            }
-
-            var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag map"));
-            var shown = 0;
-            foreach (var vendor in acquisition.Vendors)
-            {
-                if (shown == MaxVendorLines)
-                {
-                    fonts.Citation12.Push();
-                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-                    ImGui.TextUnformatted($"+{acquisition.Vendors.Count - shown} more vendors");
-                    ImGui.PopStyleColor();
-                    fonts.Citation12.Pop();
-                    break;
-                }
-
-                shown++;
-                fonts.Body13.Push();
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
-                ImGui.TextUnformatted(FontAwesomeIcon.MapPin.ToIconString());
-                ImGui.PopStyleColor();
-                ImGui.SameLine(0, Theme.Space3 * scale);
-                ImGui.TextUnformatted(vendor.NpcName);
-                if (vendor.Location is { } loc)
-                {
-                    ImGui.SameLine(0, Theme.Space3 * scale);
-                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-                    ImGui.TextUnformatted($"{loc.ZoneName} {Coords(loc.MapX, loc.MapY)}");
-                    ImGui.PopStyleColor();
-                }
-
-                fonts.Body13.Pop();
-
-                fonts.Citation12.Push();
-                if (vendor.GilPrice > 0)
-                {
-                    var price = $"{vendor.GilPrice} gil";
-                    var priceWidth = ImGui.CalcTextSize(price).X;
-                    ImGui.SameLine();
-                    ImGui.SetCursorPosX(RowRightEdge() - flagWidth - (Theme.Space3 * scale) - priceWidth);
-                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
-                    ImGui.TextUnformatted(price);
-                    ImGui.PopStyleColor();
-                }
-
-                if (vendor.Location is { } flagLoc)
-                {
-                    ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-                    ImGui.SameLine();
-                    ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
-                    if (Widgets.FlagButton("Flag map", $"vendor{card.Entity.RowId}-{shown}"))
-                        MapLinkOpener.Open(flagLoc);
-                    ImGui.PopStyleVar();
-                }
-
-                fonts.Citation12.Pop();
-            }
-
-            var exchangesShown = 0;
-            foreach (var exchange in acquisition.Exchanges)
-            {
-                if (exchangesShown == MaxVendorLines)
-                {
-                    fonts.Citation12.Push();
-                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-                    ImGui.TextUnformatted($"+{acquisition.Exchanges.Count - exchangesShown} more exchanges");
-                    ImGui.PopStyleColor();
-                    fonts.Citation12.Pop();
-                    break;
-                }
-
-                exchangesShown++;
-                fonts.Body13.Push();
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
-                ImGui.TextUnformatted(FontAwesomeIcon.ExchangeAlt.ToIconString());
-                ImGui.PopStyleColor();
-                ImGui.SameLine(0, Theme.Space3 * scale);
-                ImGui.TextUnformatted(exchange.NpcName);
                 ImGui.SameLine(0, Theme.Space3 * scale);
                 ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
-                ImGui.TextUnformatted($"{exchange.ShopName} — {string.Join(", ", exchange.Costs)}");
+                ImGui.TextUnformatted("· requires");
                 ImGui.PopStyleColor();
-                if (exchange.Location is { } exchangeLoc)
-                {
-                    ImGui.SameLine(0, Theme.Space3 * scale);
-                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-                    ImGui.TextUnformatted($"{exchangeLoc.ZoneName} {Coords(exchangeLoc.MapX, exchangeLoc.MapY)}");
-                    ImGui.PopStyleColor();
-                }
-
-                fonts.Body13.Pop();
-
-                if (exchange.Location is { } exchangeFlagLoc)
-                {
-                    fonts.Citation12.Push();
-                    ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-                    ImGui.SameLine();
-                    ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
-                    if (Widgets.FlagButton("Flag map", $"exch{card.Entity.RowId}-{exchangesShown}"))
-                        MapLinkOpener.Open(exchangeFlagLoc);
-                    ImGui.PopStyleVar();
-                    fonts.Citation12.Pop();
-                }
+                ImGui.SameLine(0, Theme.Space2 * scale);
+                if (Widgets.LinkText(recipe.MasterBook))
+                    queuedNavigation = (recipe.MasterBook, SearchCategory.Items);
             }
 
-            var nodesShown = 0;
-            foreach (var node in acquisition.Gathering)
+            if (recipe.Ingredients.Count > 0)
             {
-                if (nodesShown == MaxVendorLines)
-                {
-                    fonts.Citation12.Push();
-                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-                    ImGui.TextUnformatted($"+{acquisition.Gathering.Count - nodesShown} more nodes");
-                    ImGui.PopStyleColor();
-                    fonts.Citation12.Pop();
-                    break;
-                }
-
-                nodesShown++;
-                fonts.Body13.Push();
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
-                ImGui.TextUnformatted(FontAwesomeIcon.Leaf.ToIconString());
-                ImGui.PopStyleColor();
                 ImGui.SameLine(0, Theme.Space3 * scale);
-                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
-                ImGui.TextUnformatted(node.Level > 0 ? $"{node.NodeType} · Level {node.Level}" : node.NodeType);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+                ImGui.TextUnformatted("—");
                 ImGui.PopStyleColor();
-                if (node.Location is { } nodeLoc)
+                ImGui.SameLine(0, Theme.Space2 * scale);
+                DrawItemAmounts(recipe.Ingredients);
+            }
+
+            fonts.Body13.Pop();
+        }
+
+        var shown = 0;
+        foreach (var vendor in acquisition.Vendors)
+        {
+            if (shown == MaxVendorLines)
+            {
+                fonts.Citation12.Push();
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"+{acquisition.Vendors.Count - shown} more vendors");
+                ImGui.PopStyleColor();
+                fonts.Citation12.Pop();
+                break;
+            }
+
+            shown++;
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.MapPin.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.TextUnformatted(vendor.NpcName);
+            var actionsWidth = LocationActionsWidth(vendor.Location);
+            var price = vendor.GilPrice > 0 ? $"{vendor.GilPrice} gil" : "";
+            var priceWidth = price.Length > 0 ? CitationTextWidth(price) + (Theme.Space3 * scale) : 0f;
+            if (vendor.Location is { } loc)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"{loc.ZoneName} {Coords(loc.MapX, loc.MapY)}");
+                ImGui.PopStyleColor();
+                DrawAetheryteTail(loc, actionsWidth + priceWidth);
+            }
+
+            fonts.Body13.Pop();
+
+            fonts.Citation12.Push();
+            if (price.Length > 0)
+            {
+                ImGui.SameLine();
+                ImGui.SetCursorPosX(RowRightEdge() - actionsWidth - priceWidth);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
+                ImGui.TextUnformatted(price);
+                ImGui.PopStyleColor();
+            }
+
+            if (vendor.Location is { } flagLoc)
+            {
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+                DrawLocationActions(flagLoc, $"vendor{ownerRowId}-{shown}");
+                ImGui.PopStyleVar();
+            }
+
+            fonts.Citation12.Pop();
+        }
+
+        var exchangesShown = 0;
+        foreach (var exchange in acquisition.Exchanges)
+        {
+            if (exchangesShown == MaxVendorLines)
+            {
+                fonts.Citation12.Push();
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"+{acquisition.Exchanges.Count - exchangesShown} more exchanges");
+                ImGui.PopStyleColor();
+                fonts.Citation12.Pop();
+                break;
+            }
+
+            exchangesShown++;
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.ExchangeAlt.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.TextUnformatted(exchange.NpcName);
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+            ImGui.TextUnformatted($"{exchange.ShopName} —");
+            ImGui.PopStyleColor();
+            for (var o = 0; o < exchange.Costs.Count; o++)
+            {
+                if (o > 0)
                 {
-                    ImGui.SameLine(0, Theme.Space3 * scale);
-                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-                    ImGui.TextUnformatted($"{nodeLoc.ZoneName} {Coords(nodeLoc.MapX, nodeLoc.MapY)}");
+                    ImGui.SameLine(0, 0);
+                    ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+                    ImGui.TextUnformatted(",");
                     ImGui.PopStyleColor();
                 }
 
-                fonts.Body13.Pop();
+                ImGui.SameLine(0, Theme.Space2 * scale);
+                DrawItemAmounts(exchange.Costs[o]);
+            }
 
-                if (node.Location is { } nodeFlagLoc)
-                {
-                    fonts.Citation12.Push();
-                    ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-                    ImGui.SameLine();
-                    ImGui.SetCursorPosX(RowRightEdge() - flagWidth);
-                    if (Widgets.FlagButton("Flag map", $"gather{card.Entity.RowId}-{nodesShown}"))
-                        MapLinkOpener.Open(nodeFlagLoc);
-                    ImGui.PopStyleVar();
-                    fonts.Citation12.Pop();
-                }
+            if (exchange.Location is { } exchangeLoc)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"{exchangeLoc.ZoneName} {Coords(exchangeLoc.MapX, exchangeLoc.MapY)}");
+                ImGui.PopStyleColor();
+                DrawAetheryteTail(exchangeLoc, LocationActionsWidth(exchangeLoc));
+            }
+
+            fonts.Body13.Pop();
+
+            if (exchange.Location is { } exchangeFlagLoc)
+            {
+                fonts.Citation12.Push();
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+                DrawLocationActions(exchangeFlagLoc, $"exch{ownerRowId}-{exchangesShown}");
+                ImGui.PopStyleVar();
+                fonts.Citation12.Pop();
             }
         }
+
+        var nodesShown = 0;
+        foreach (var node in acquisition.Gathering)
+        {
+            if (nodesShown == MaxVendorLines)
+            {
+                fonts.Citation12.Push();
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"+{acquisition.Gathering.Count - nodesShown} more nodes");
+                ImGui.PopStyleColor();
+                fonts.Citation12.Pop();
+                break;
+            }
+
+            nodesShown++;
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.Leaf.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            ImGui.TextUnformatted(node.Level > 0 ? $"{node.NodeType} · Level {node.Level}" : node.NodeType);
+            ImGui.PopStyleColor();
+            if (node.TimeWindow.Length > 0)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+                ImGui.TextUnformatted(FontAwesomeIcon.Clock.ToIconString());
+                ImGui.PopStyleColor();
+                ImGui.SameLine(0, Theme.Space2 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+                ImGui.TextUnformatted(node.TimeWindow);
+                ImGui.PopStyleColor();
+            }
+
+            if (node.Location is { } nodeLoc)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"{nodeLoc.ZoneName} {Coords(nodeLoc.MapX, nodeLoc.MapY)}");
+                ImGui.PopStyleColor();
+                DrawAetheryteTail(nodeLoc, LocationActionsWidth(nodeLoc));
+            }
+
+            fonts.Body13.Pop();
+
+            if (node.Location is { } nodeFlagLoc)
+            {
+                fonts.Citation12.Push();
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+                DrawLocationActions(nodeFlagLoc, $"gather{ownerRowId}-{nodesShown}");
+                ImGui.PopStyleVar();
+                fonts.Citation12.Pop();
+            }
+        }
+
+        var spotsShown = 0;
+        foreach (var spot in acquisition.Fishing)
+        {
+            if (spotsShown == MaxVendorLines)
+            {
+                fonts.Citation12.Push();
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"+{acquisition.Fishing.Count - spotsShown} more fishing spots");
+                ImGui.PopStyleColor();
+                fonts.Citation12.Pop();
+                break;
+            }
+
+            spotsShown++;
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.Fish.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            var method = spot.Spearfishing ? "Spearfishing" : "Fishing";
+            ImGui.TextUnformatted(spot.Level > 0 ? $"{method} · Level {spot.Level}" : method);
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.TextUnformatted(spot.SpotName);
+            if (spot.Location is { } spotLoc)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"{spotLoc.ZoneName} {Coords(spotLoc.MapX, spotLoc.MapY)}");
+                ImGui.PopStyleColor();
+                DrawAetheryteTail(spotLoc, LocationActionsWidth(spotLoc));
+            }
+
+            fonts.Body13.Pop();
+
+            if (spot.Location is { } spotFlagLoc)
+            {
+                fonts.Citation12.Push();
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+                DrawLocationActions(spotFlagLoc, $"fish{ownerRowId}-{spotsShown}");
+                ImGui.PopStyleVar();
+                fonts.Citation12.Pop();
+            }
+        }
+
+        if (acquisition.FishingNote.Length > 0)
+        {
+            fonts.Citation12.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
+            ImGui.TextWrapped(acquisition.FishingNote);
+            ImGui.PopStyleColor();
+            fonts.Citation12.Pop();
+        }
+
+        var sealVendorsShown = 0;
+        foreach (var sealVendor in acquisition.SealVendors)
+        {
+            sealVendorsShown++;
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.Medal.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.TextUnformatted(sealVendor.NpcName);
+            if (sealVendor.RequiredRank.Length > 0)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+                ImGui.TextUnformatted($"requires {sealVendor.RequiredRank}");
+                ImGui.PopStyleColor();
+            }
+
+            var sealActionsWidth = LocationActionsWidth(sealVendor.Location);
+            var seals = $"{sealVendor.SealCost} seals";
+            var sealsWidth = CitationTextWidth(seals) + (Theme.Space3 * scale);
+            if (sealVendor.Location is { } sealLoc)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"{sealLoc.ZoneName} {Coords(sealLoc.MapX, sealLoc.MapY)}");
+                ImGui.PopStyleColor();
+                DrawAetheryteTail(sealLoc, sealActionsWidth + sealsWidth);
+            }
+
+            fonts.Body13.Pop();
+
+            fonts.Citation12.Push();
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(RowRightEdge() - sealActionsWidth - sealsWidth);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
+            ImGui.TextUnformatted(seals);
+            ImGui.PopStyleColor();
+
+            if (sealVendor.Location is { } sealFlagLoc)
+            {
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+                DrawLocationActions(sealFlagLoc, $"seal{ownerRowId}-{sealVendorsShown}");
+                ImGui.PopStyleVar();
+            }
+
+            fonts.Citation12.Pop();
+        }
+
+        foreach (var venture in acquisition.Ventures)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.Suitcase.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            ImGui.TextUnformatted($"Retainer venture · Level {venture.Level} {venture.Category}");
+            ImGui.PopStyleColor();
+            if (venture.Quantities.Length > 0)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+                ImGui.TextUnformatted($"— {venture.Quantities} per venture");
+                ImGui.PopStyleColor();
+            }
+
+            fonts.Body13.Pop();
+        }
+    }
+
+    private void DrawTrailingDetail(EntityCardResult card)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
 
         if (plugin.Configuration.ShowUnlockRequirements)
         {
@@ -950,6 +1423,308 @@ public partial class MainWindow
             }
 
             DrawSectionList(card.Title, card.WikiSections);
+        }
+    }
+
+    // Mount/minion/orchestrion/card/emote cards answer "how do I get this
+    // non-item thing" by borrowing the teaching item's acquisition sources.
+    private void DrawCollectionDetail(EntityCardResult card)
+    {
+        var (teaching, flavor) = card.Entity switch
+        {
+            MountEntity mount => (mount.TeachingItem, mount.Description),
+            MinionEntity minion => (minion.TeachingItem, minion.Description),
+            OrchestrionEntity orchestrion => (orchestrion.TeachingItem, orchestrion.Description),
+            TripleTriadCardEntity tripleTriad => (tripleTriad.TeachingItem, tripleTriad.Description),
+            EmoteEntity emote => (emote.TeachingItem, (string?)null),
+            _ => (null, null),
+        };
+        if (flavor == null && teaching == null && card.Entity is not EmoteEntity)
+            return;
+
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        if (card.Entity is MinionEntity { BattleStats: { } stats })
+        {
+            ImGui.Spacing();
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            var special = stats.SpecialAction.Length > 0 ? $" · Special: {stats.SpecialAction}" : "";
+            ImGui.TextWrapped($"Lord of Verminion — HP {stats.Hp} · Attack {stats.Attack} · " +
+                $"Defense {stats.Defense} · Speed {stats.Speed} · Cost {stats.Cost}{special}");
+            ImGui.PopStyleColor();
+            fonts.Body13.Pop();
+        }
+
+        var cardSources = card.Entity is TripleTriadCardEntity
+            { NpcName.Length: > 0 } or TripleTriadCardEntity { DutyName.Length: > 0 }
+            or TripleTriadCardEntity { ObtainText.Length: > 0 };
+        var emoteQuest = card.Entity is EmoteEntity { UnlockQuest: not null };
+        if (teaching != null || cardSources || emoteQuest)
+        {
+            ImGui.Spacing();
+            DetailLabel("ACQUISITION");
+
+            if (card.Entity is TripleTriadCardEntity tt)
+                DrawCardObtain(tt);
+
+            if (card.Entity is EmoteEntity { UnlockQuest: { } unlockQuest })
+            {
+                fonts.Body13.Push();
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+                ImGui.TextUnformatted(FontAwesomeIcon.Scroll.ToIconString());
+                ImGui.PopStyleColor();
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+                ImGui.TextUnformatted("Unlocked by quest");
+                ImGui.PopStyleColor();
+                ImGui.SameLine(0, Theme.Space2 * scale);
+                if (Widgets.LinkText(unlockQuest.Name))
+                    queuedNavigation = (unlockQuest.Name, SearchCategory.Unlocks);
+                fonts.Body13.Pop();
+            }
+
+            if (teaching != null)
+            {
+                fonts.Body13.Push();
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+                ImGui.TextUnformatted(FontAwesomeIcon.Book.ToIconString());
+                ImGui.PopStyleColor();
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+                ImGui.TextUnformatted(card.Entity is EmoteEntity ? "Unlocked by item" : "Taught by item");
+                ImGui.PopStyleColor();
+                ImGui.SameLine(0, Theme.Space2 * scale);
+                if (Widgets.LinkText(teaching.Name))
+                    queuedNavigation = (teaching.Name, SearchCategory.Items);
+                fonts.Body13.Pop();
+
+                if (teaching.Acquisition is { } sources)
+                    DrawAcquisitionSources(card.Entity.RowId, sources);
+            }
+        }
+
+        if (flavor is { Length: > 0 })
+        {
+            ImGui.Spacing();
+            fonts.Citation12.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
+            ImGui.TextWrapped(flavor);
+            ImGui.PopStyleColor();
+            fonts.Citation12.Pop();
+        }
+    }
+
+    private void DrawVistaDetail(VistaEntity vista)
+    {
+        var fonts = plugin.Fonts;
+
+        ImGui.Spacing();
+        DetailLabel("SIGHTSEEING LOG");
+
+        fonts.Body13.Push();
+        if (vista.Hint.Length > 0)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            ImGui.TextWrapped(vista.Hint);
+            ImGui.PopStyleColor();
+        }
+
+        if (vista.Emote.Length > 0)
+            UsageLine(FontAwesomeIcon.Eye, $"Emote: {vista.Emote}");
+        if (vista.TimeWindow.Length > 0)
+            UsageLine(FontAwesomeIcon.Clock, vista.TimeWindow);
+        fonts.Body13.Pop();
+
+        if (vista.Lore.Length > 0)
+        {
+            ImGui.Spacing();
+            fonts.Citation12.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
+            ImGui.TextWrapped(vista.Lore);
+            ImGui.PopStyleColor();
+            fonts.Citation12.Pop();
+        }
+    }
+
+    private void DrawAetherCurrentsDetail(AetherCurrentZoneEntity currents)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        ImGui.Spacing();
+        DetailLabel("UNLOCK QUESTS");
+
+        var viewWidth = FlagButtonWidth("View");
+        for (var i = 0; i < currents.QuestCurrents.Count; i++)
+        {
+            var step = currents.QuestCurrents[i];
+
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            ImGui.TextUnformatted(step.Quest.Name);
+            ImGui.PopStyleColor();
+            if (step.Level > 0)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"Lv {step.Level}");
+                ImGui.PopStyleColor();
+            }
+
+            StepCheckmark(step.Quest.RowId);
+            fonts.Body13.Pop();
+
+            fonts.Citation12.Push();
+            ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+            if (step.StartLocation is { } start)
+                DrawLocationActions(start, $"currentflag{currents.RowId}-{i}", compact: true, reserved: viewWidth + (Theme.Space2 * scale));
+
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(RowRightEdge() - viewWidth);
+            if (Widgets.OutlinedButton($"View##current{currents.RowId}-{i}"))
+                queuedNavigation = (step.Quest.Name, SearchCategory.Unlocks);
+            ImGui.PopStyleVar();
+            fonts.Citation12.Pop();
+        }
+
+        fonts.Citation12.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+        ImGui.TextUnformatted("Field currents are scattered in the open world - the wiki page lists them.");
+        ImGui.PopStyleColor();
+        fonts.Citation12.Pop();
+    }
+
+    private void DrawFateRequirement(QuestLink quest)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        ImGui.Spacing();
+        DetailLabel("REQUIREMENTS");
+
+        fonts.Body13.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+        ImGui.TextUnformatted(FontAwesomeIcon.Scroll.ToIconString());
+        ImGui.PopStyleColor();
+        ImGui.SameLine(0, Theme.Space3 * scale);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+        ImGui.TextUnformatted("Requires quest");
+        ImGui.PopStyleColor();
+        ImGui.SameLine(0, Theme.Space2 * scale);
+        if (Widgets.LinkText(quest.Name))
+            queuedNavigation = (quest.Name, SearchCategory.Unlocks);
+        fonts.Body13.Pop();
+    }
+
+    private void DrawLeveDetail(LeveEntity leve)
+    {
+        var fonts = plugin.Fonts;
+
+        ImGui.Spacing();
+        DetailLabel("LEVEQUEST");
+
+        fonts.Body13.Push();
+        if (leve.Description.Length > 0)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            ImGui.TextWrapped(leve.Description);
+            ImGui.PopStyleColor();
+        }
+
+        var reward = leve.AllowanceCost == 1 ? "1 leve allowance" : $"{leve.AllowanceCost} leve allowances";
+        if (leve.ExpReward > 0)
+            reward += $" · {leve.ExpReward} exp";
+        if (leve.GilReward > 0)
+            reward += $" · {leve.GilReward} gil";
+        UsageLine(FontAwesomeIcon.Scroll, reward);
+        fonts.Body13.Pop();
+    }
+
+    private void DrawCardObtain(TripleTriadCardEntity tripleTriad)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        if (tripleTriad.NpcName.Length > 0)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.MapPin.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.TextUnformatted($"Won from {tripleTriad.NpcName}");
+            if (tripleTriad.NpcLocation is { } loc)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
+                ImGui.TextUnformatted($"{loc.ZoneName} {Coords(loc.MapX, loc.MapY)}");
+                ImGui.PopStyleColor();
+                DrawAetheryteTail(loc, LocationActionsWidth(loc));
+            }
+
+            fonts.Body13.Pop();
+
+            if (tripleTriad.NpcLocation is { } flagLoc)
+            {
+                fonts.Citation12.Push();
+                ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
+                DrawLocationActions(flagLoc, $"ttnpc{tripleTriad.RowId}");
+                ImGui.PopStyleVar();
+                fonts.Citation12.Pop();
+            }
+        }
+
+        if (tripleTriad.DutyName.Length > 0)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.Dungeon.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            ImGui.TextUnformatted($"Dropped in {tripleTriad.DutyName}");
+            ImGui.PopStyleColor();
+            fonts.Body13.Pop();
+        }
+
+        if (tripleTriad.ObtainText.Length > 0)
+        {
+            fonts.Body13.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+            ImGui.TextUnformatted(FontAwesomeIcon.InfoCircle.ToIconString());
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space3 * scale);
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+            ImGui.TextUnformatted(tripleTriad.ObtainText);
+            ImGui.PopStyleColor();
+            fonts.Body13.Pop();
+        }
+    }
+
+    // Quantities stay plain text; the item name is the link, so "where do I
+    // get the Steel Amalj'ok" is one click instead of a retyped search.
+    private void DrawItemAmounts(IReadOnlyList<ItemAmount> parts)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        for (var i = 0; i < parts.Count; i++)
+        {
+            if (i > 0)
+            {
+                ImGui.SameLine(0, Theme.Space2 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+                ImGui.TextUnformatted("+");
+                ImGui.PopStyleColor();
+                ImGui.SameLine(0, Theme.Space2 * scale);
+            }
+
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+            ImGui.TextUnformatted($"{parts[i].Amount}x");
+            ImGui.PopStyleColor();
+            ImGui.SameLine(0, Theme.Space1 * scale);
+            if (Widgets.LinkText(parts[i].Name))
+                queuedNavigation = (parts[i].Name, SearchCategory.Items);
         }
     }
 
@@ -1043,6 +1818,122 @@ public partial class MainWindow
 
     private static string HqSuffix(int bonus) => bonus > 0 ? $" (+{bonus} HQ)" : "";
 
+    private void DrawConsumable(ItemFoodEffect food)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        ImGui.Spacing();
+        DetailLabel("CONSUMABLE");
+
+        fonts.Body13.Push();
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+        ImGui.TextUnformatted(FontAwesomeIcon.Utensils.ToIconString());
+        ImGui.PopStyleColor();
+        ImGui.SameLine(0, Theme.Space3 * scale);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+        var header = food.StatusName.Length > 0
+            ? $"{food.StatusName} · {DurationLabel(food.DurationSeconds)}"
+            : DurationLabel(food.DurationSeconds);
+        if (food.ExpBonusPercent > 0)
+            header += $" · EXP +{food.ExpBonusPercent}%";
+        ImGui.TextUnformatted(header);
+
+        foreach (var stat in food.Stats)
+            ImGui.TextUnformatted(FoodStatLine(stat));
+        ImGui.PopStyleColor();
+        fonts.Body13.Pop();
+    }
+
+    private static string DurationLabel(int seconds) =>
+        seconds >= 60 && seconds % 60 == 0 ? $"{seconds / 60} min" : $"{seconds}s";
+
+    private static string FoodStatLine(FoodStat stat)
+    {
+        var line = $"{stat.Name} {FoodValue(stat.Relative, stat.Value, stat.Max)}";
+        if (stat.HqValue != stat.Value || stat.HqMax != stat.Max)
+            line += $" (HQ {FoodValue(stat.Relative, stat.HqValue, stat.HqMax)})";
+        return line;
+    }
+
+    private static string FoodValue(bool relative, int value, int max)
+    {
+        var sign = value >= 0 ? "+" : "";
+        return relative ? $"{sign}{value}% (max {max})" : $"{sign}{value}";
+    }
+
+    private void DrawUsage(ItemUsage usage)
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+        var fonts = plugin.Fonts;
+
+        ImGui.Spacing();
+        DetailLabel("USAGE");
+
+        fonts.Body13.Push();
+        if (usage.MateriaTag.Length > 0)
+            UsageLine(FontAwesomeIcon.Gem, $"Materia · {usage.MateriaTag}");
+
+        if (usage.UsedInRecipes > 0)
+            UsageLine(FontAwesomeIcon.Hammer,
+                usage.UsedInRecipes == 1 ? "Used in 1 recipe" : $"Used in {usage.UsedInRecipes} recipes");
+
+        foreach (var delivery in usage.Deliveries)
+        {
+            UsageLine(FontAwesomeIcon.BoxOpen, $"Custom delivery · {delivery.NpcName}");
+            if (delivery.UnlockQuest is { } quest)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+                ImGui.TextUnformatted("— requires");
+                ImGui.PopStyleColor();
+                ImGui.SameLine(0, Theme.Space2 * scale);
+                if (Widgets.LinkText(quest.Name))
+                    queuedNavigation = (quest.Name, SearchCategory.Unlocks);
+            }
+        }
+
+        foreach (var turnIn in usage.CollectableTurnIns)
+        {
+            var band = turnIn.LevelMax > turnIn.LevelMin
+                ? $"Lv {turnIn.LevelMin}-{turnIn.LevelMax}"
+                : $"Lv {turnIn.LevelMin}";
+            UsageLine(FontAwesomeIcon.Star, $"Collectable turn-in · {band}");
+            if (turnIn.MaxScrips > 0)
+            {
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
+                ImGui.TextUnformatted($"— up to {turnIn.MaxScrips} scrips");
+                ImGui.PopStyleColor();
+            }
+        }
+
+        if (usage.TreasureMap is { } map)
+        {
+            var sites = map.Zones.Sum(z => z.SpotCount);
+            var party = map.PartySize > 1 ? $" · up to {map.PartySize} players" : "";
+            UsageLine(FontAwesomeIcon.Map, $"Treasure map{party} · {sites} dig sites");
+            fonts.Citation12.Push();
+            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
+            ImGui.TextWrapped(string.Join(", ", map.Zones.Select(z => $"{z.ZoneName} ({z.SpotCount})")));
+            ImGui.PopStyleColor();
+            fonts.Citation12.Pop();
+        }
+
+        fonts.Body13.Pop();
+    }
+
+    private void UsageLine(FontAwesomeIcon icon, string text)
+    {
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
+        ImGui.TextUnformatted(icon.ToIconString());
+        ImGui.PopStyleColor();
+        ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral300);
+        ImGui.TextUnformatted(text);
+        ImGui.PopStyleColor();
+    }
+
     private void DrawNpcTabs(EntityCardResult card, NpcEntity npc)
     {
         var fonts = plugin.Fonts;
@@ -1082,7 +1973,6 @@ public partial class MainWindow
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
         var viewWidth = FlagButtonWidth("View");
-        var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag"));
 
         if (!Active.SceneGroups.TryGetValue(RowKey(card), out var groups))
             return;
@@ -1125,12 +2015,7 @@ public partial class MainWindow
                 fonts.Citation12.Push();
                 ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
                 if (appearance.Location is { } flagLoc)
-                {
-                    ImGui.SameLine();
-                    ImGui.SetCursorPosX(RowRightEdge() - viewWidth - (Theme.Space2 * scale) - flagWidth);
-                    if (Widgets.FlagButton("Flag", $"sceneflag{npc.RowId}-{group.Order}-{i}"))
-                        MapLinkOpener.Open(flagLoc);
-                }
+                    DrawLocationActions(flagLoc, $"sceneflag{npc.RowId}-{group.Order}-{i}", compact: true, reserved: viewWidth + (Theme.Space2 * scale));
 
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(RowRightEdge() - viewWidth);
@@ -1219,7 +2104,6 @@ public partial class MainWindow
         }
 
         var viewWidth = FlagButtonWidth("View");
-        var flagWidth = FlagButtonWidth(Widgets.FlagLabel("Flag"));
         for (var j = 0; j < chain.Steps.Count; j++)
         {
             var step = chain.Steps[j];
@@ -1246,12 +2130,7 @@ public partial class MainWindow
             fonts.Citation12.Push();
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
             if (j == nextIdx && step.StartLocation is { } start)
-            {
-                ImGui.SameLine();
-                ImGui.SetCursorPosX(RowRightEdge() - viewWidth - (Theme.Space2 * scale) - flagWidth);
-                if (Widgets.FlagButton("Flag", $"chainflag{quest.RowId}-{index}-{j}"))
-                    MapLinkOpener.Open(start);
-            }
+                DrawLocationActions(start, $"chainflag{quest.RowId}-{index}-{j}", compact: true, reserved: viewWidth + (Theme.Space2 * scale));
 
             ImGui.SameLine();
             ImGui.SetCursorPosX(RowRightEdge() - viewWidth);
@@ -1368,6 +2247,69 @@ public partial class MainWindow
         var width = ImGui.CalcTextSize(label).X + (Theme.Space4 * 2f * ImGuiHelpers.GlobalScale);
         plugin.Fonts.Citation12.Pop();
         return width;
+    }
+
+    private float CitationTextWidth(string text)
+    {
+        plugin.Fonts.Citation12.Push();
+        var width = ImGui.CalcTextSize(text).X;
+        plugin.Fonts.Citation12.Pop();
+        return width;
+    }
+
+    private bool CanTeleport(MapLocation? location) =>
+        location?.Aetheryte is { TeleportRowId: not 0 } near
+        && plugin.Configuration.TeleportButtonEnabled
+        && plugin.Teleport.CanTeleportTo(near.TeleportRowId);
+
+    // Width of a location line's right-aligned action cluster: the flag plus,
+    // when a teleport provider can reach the location's aetheryte, Teleport.
+    // Null locations still reserve the flag width so price columns line up.
+    private float LocationActionsWidth(MapLocation? location, bool compact = false)
+    {
+        var width = FlagButtonWidth(Widgets.FlagLabel(compact ? "Flag" : "Flag map"));
+        if (CanTeleport(location))
+            width += FlagButtonWidth(Widgets.TeleportLabel(compact ? "" : "Teleport")) + (Theme.Space2 * ImGuiHelpers.GlobalScale);
+        return width;
+    }
+
+    // Draws [Teleport] [Flag] right-aligned, leaving `reserved` free to the
+    // right for whatever the caller draws after (a View button). The caller
+    // holds the Citation12 font and the compact FramePadding.
+    private void DrawLocationActions(MapLocation location, string id, bool compact = false, float reserved = 0f)
+    {
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(RowRightEdge() - reserved - LocationActionsWidth(location, compact));
+        if (CanTeleport(location) && location.Aetheryte is { } near)
+        {
+            if (Widgets.TeleportButton(compact ? "" : "Teleport", $"tp{id}"))
+                plugin.Teleport.TeleportTo(near.TeleportRowId);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Teleport to {near.TeleportName}");
+            ImGui.SameLine(0, Theme.Space2 * ImGuiHelpers.GlobalScale);
+        }
+
+        if (Widgets.FlagButton(compact ? "Flag" : "Flag map", id))
+            MapLinkOpener.Open(location);
+    }
+
+    // Muted "· Aetheryte: X" after a location's coordinates, in the caller's
+    // font. Skipped when it would run under the right-aligned cluster; the
+    // caller's next SameLine re-anchors on the coordinates either way.
+    private void DrawAetheryteTail(MapLocation location, float reservedRight)
+    {
+        if (!plugin.Configuration.ShowNearestAetheryte || location.Aetheryte is not { } near)
+            return;
+
+        var scale = ImGuiHelpers.GlobalScale;
+        var text = $"· {(near.Aethernet ? "Aethernet" : "Aetheryte")}: {near.Name}";
+        ImGui.SameLine(0, Theme.Space3 * scale);
+        if (ImGui.GetCursorPosX() + ImGui.CalcTextSize(text).X > RowRightEdge() - reservedRight - (Theme.Space3 * scale))
+            return;
+
+        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
+        ImGui.TextUnformatted(text);
+        ImGui.PopStyleColor();
     }
 
     private static void DrawIconTile(ushort icon)

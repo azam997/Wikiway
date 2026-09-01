@@ -41,7 +41,10 @@ public sealed class ResultRanker
                 (QueryIntent.Location, NpcEntity) => 0.25,
                 (QueryIntent.Unlock, QuestEntity) => 0.25,
                 (QueryIntent.Acquisition, ItemEntity) => 0.25,
-                (QueryIntent.Acquisition, MountEntity or MinionEntity) => 0.15,
+                (QueryIntent.Acquisition,
+                    MountEntity or MinionEntity or OrchestrionEntity or TripleTriadCardEntity) => 0.15,
+                (QueryIntent.Location, VistaEntity or HuntMarkEntity or FateEntity) => 0.15,
+                (QueryIntent.Unlock, AetherCurrentZoneEntity) => 0.15,
                 _ => 0,
             };
         }

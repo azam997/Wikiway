@@ -69,6 +69,24 @@ public class WikiLiveTests : IDisposable
         Assert.True(HtmlText.Strip(html).Length > 0, "section body stripped to nothing");
     }
 
+    // Duty drops exist nowhere in the client sheets (probed 2026-09-01), so
+    // the wiki's "Duties" subsection is the only place this answer can come
+    // from - if the heading or its body drifts, the drop line silently dies.
+    [Fact]
+    public async Task DropOnlyItemPageYieldsItsDutiesSection()
+    {
+        var sections = await Live(() => client.GetSectionsAsync("Aithon Whistle", CancellationToken.None));
+
+        var picked = SectionExtractor.SelectSections(SearchCategory.Items, sections);
+        var duties = picked.FirstOrDefault(s => s.Title.Contains("dut", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(duties);
+
+        var html = await Live(() =>
+            client.GetSectionHtmlAsync("Aithon Whistle", int.Parse(duties.Index), CancellationToken.None));
+        Assert.NotNull(html);
+        Assert.Contains("Bowl of Embers", HtmlText.Strip(html), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task<T> Live<T>(Func<Task<T>> action)
     {
         try
