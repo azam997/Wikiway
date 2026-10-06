@@ -53,7 +53,7 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider
 
         if (results.Count > 0 && results[0] is WikiPageResult best)
         {
-            if (query.Category == SearchCategory.Unlocks &&
+            if (query.Intent == QueryIntent.Unlock &&
                 string.Equals(
                     QueryNormalizer.StripLeadingArticle(best.Title),
                     QueryNormalizer.StripLeadingArticle(query.Term),
@@ -63,8 +63,8 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider
                 results[0] = best;
             }
 
-            var sections = query.Category is SearchCategory.Items or SearchCategory.Gathering or SearchCategory.Unlocks
-                ? await TryFetchSectionsAsync(query.Category, best, ct).ConfigureAwait(false)
+            var sections = SectionExtractor.AppliesTo(query.Intent)
+                ? await TryFetchSectionsAsync(query.Intent, best, ct).ConfigureAwait(false)
                 : null;
 
             if (sections != null)
@@ -75,12 +75,12 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider
     }
 
     private async Task<WikiSectionsResult?> TryFetchSectionsAsync(
-        SearchCategory category, WikiPageResult page, CancellationToken ct)
+        QueryIntent intent, WikiPageResult page, CancellationToken ct)
     {
         try
         {
             var sections = await client.GetSectionsAsync(page.Title, ct).ConfigureAwait(false);
-            var picked = SectionExtractor.SelectSections(category, sections);
+            var picked = SectionExtractor.SelectSections(intent, sections);
 
             var bodies = new List<WikiSectionText>(picked.Count);
             foreach (var section in picked)

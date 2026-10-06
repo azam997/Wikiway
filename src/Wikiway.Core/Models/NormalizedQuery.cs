@@ -9,9 +9,11 @@ public enum QueryIntent
     General,
 }
 
+// Chosen by an optional prefix on the query text ("item: iron ingot");
+// All means no prefix, so every kind of result is searched.
 public enum SearchCategory
 {
-    Other,
+    All,
     Items,
     Npcs,
     Gathering,
@@ -19,4 +21,4 @@ public enum SearchCategory
 }
 
 public sealed record NormalizedQuery(
-    string Raw, string Term, QueryIntent Intent, SearchCategory Category = SearchCategory.Other);
+    string Raw, string Term, QueryIntent Intent, SearchCategory Category = SearchCategory.All);

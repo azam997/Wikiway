@@ -859,6 +859,22 @@ public class GameDataCanaryTests(GameDataFixture fixture)
             r => r.Title.Equals("Cosmic Operator's Attire", StringComparison.OrdinalIgnoreCase));
     }
 
+    // With no prefix to filter kinds, phrasing alone has to pick the card: an
+    // NPC named exactly "Gold Saucer" ties the curated Gold Saucer unlockable
+    // on name score at 7.x.
+    [Fact]
+    public async Task UnlockPhrasingPicksTheGoldSaucerOverTheSameNamedNpc()
+    {
+        var normalizer = new QueryNormalizer();
+        var query = normalizer.Normalize("how do i unlock the gold saucer");
+        var local = await new LocalGameDataProvider(fixture.Store()).SearchAsync(query, CancellationToken.None);
+
+        var top = new ResultRanker().Merge(query, [local]).OfType<EntityCardResult>().First();
+
+        Assert.IsType<DutyEntity>(top.Entity);
+        Assert.Contains(local.Results, r => r is EntityCardResult { Entity: NpcEntity, Title: "Gold Saucer" });
+    }
+
     // Pins the equipment chain: EquipSlotCategory flags -> slot name,
     // ClassJobCategory, LevelItem, damage columns. The MRD starting weapon has
     // been an untouched level-1 two-hander since 2013. It carries no BaseParam

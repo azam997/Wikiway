@@ -49,7 +49,9 @@ public class ConfigWindow : Window
         }
 
         ImGui.SameLine();
-        ImGuiComponents.HelpMarker("Appears when right-clicking inventory items, chat item links, and NPCs.");
+        ImGuiComponents.HelpMarker(
+            "Appears when right-clicking items, NPCs and enemies. Items work from your inventory, " +
+            "chat links, the crafting and gathering logs, the timers window and custom deliveries.");
 
         var soloToast = config.SoloDutyToastEnabled;
         if (ImGui.Checkbox("Offer a duty guide when entering a solo duty", ref soloToast))
@@ -71,7 +73,7 @@ public class ConfigWindow : Window
         ImGui.SameLine();
         ImGuiComponents.HelpMarker(
             "Adds an Unlock Requirements section listing each quest chain. " +
-            "Steps link to that quest in the Quests & Unlocks tab, and completed " +
+            "Clicking a step looks that quest up, and completed " +
             "steps get checkmarks while you are logged in.");
 
         var equipStats = config.ShowEquipmentStats;
@@ -160,7 +162,7 @@ public class ConfigWindow : Window
             "until clicked. Does nothing while logged out.");
 
         var questPicker = config.ActiveQuestPickerEnabled;
-        if (ImGui.Checkbox("Show your active quests on the Quests & Unlocks tab", ref questPicker))
+        if (ImGui.Checkbox("Show your active quests before you search", ref questPicker))
         {
             config.ActiveQuestPickerEnabled = questPicker;
             config.Save();
@@ -168,7 +170,7 @@ public class ConfigWindow : Window
 
         ImGui.SameLine();
         ImGuiComponents.HelpMarker(
-            "Lists the quests in your journal on the tab before you search, and behind " +
+            "Lists the quests in your journal before you search, and behind " +
             "the Active quests button after. Clicking one looks it up.");
 
         ImGui.Separator();

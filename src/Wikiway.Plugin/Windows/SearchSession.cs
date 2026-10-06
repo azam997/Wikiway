@@ -9,6 +9,7 @@ namespace Wikiway.Plugin.Windows;
 internal sealed class SearchSession : IDisposable
 {
     public string QueryInput = string.Empty;
+    public string? Submitted;
     public readonly List<SearchResult> AboveGate = [];
     public readonly List<SearchResult> BelowGate = [];
     public readonly List<SearchResult> Wiki = [];
@@ -24,9 +25,7 @@ internal sealed class SearchSession : IDisposable
     public Task<QueryResponse>? Pending;
     public QueryResponse? Response;
     public string? Error;
-    public float ScrollY;
-    public float? PendingScroll;
-    public int PendingScrollFrames;
+    public bool ScrollToTop;
 
     public void Dispose()
     {

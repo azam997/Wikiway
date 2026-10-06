@@ -63,8 +63,8 @@ public sealed class LocalGameDataProvider : ISearchProvider
     }
 
     // Items still cover gatherables - ore is an item whether or not a node
-    // spawns it. Gathering is the narrower lens; duties have no lens of their
-    // own anymore and ride the unfiltered Other search.
+    // spawns it. Gathering is the narrower filter; duties have no filter of
+    // their own and are found by the unprefixed search.
     private static EntityKind[]? KindFilter(SearchCategory category) => category switch
     {
         SearchCategory.Items => [EntityKind.Item, EntityKind.Gatherable],

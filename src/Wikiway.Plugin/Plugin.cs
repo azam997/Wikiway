@@ -11,7 +11,6 @@ using Dalamud.Plugin.Services;
 using Dalamud.Interface.Windowing;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Caching;
-using Wikiway.Core.Models;
 using Wikiway.Core.Pipeline;
 using Wikiway.Core.Providers;
 using Wikiway.Core.Wiki;
@@ -180,7 +179,9 @@ public sealed class Plugin : IDalamudPlugin
         // In-flight searches and the index build still hold the HttpClient and
         // this assembly; give them a moment to observe cancellation before
         // both go away with the ALC.
-        Task[] background = [warmupTask, localProvider.IndexTask, .. mainWindow.ActiveSearches()];
+        Task[] background = mainWindow.PendingSearch is { } search
+            ? [warmupTask, localProvider.IndexTask, search]
+            : [warmupTask, localProvider.IndexTask];
         try
         {
             Task.WhenAll(background).Wait(TimeSpan.FromSeconds(2));
@@ -242,37 +243,8 @@ public sealed class Plugin : IDalamudPlugin
     {
         var query = args.Trim();
         if (query.Length > 0)
-        {
-            var (term, category) = ParseCategoryPrefix(query);
-            mainWindow.SubmitQuery(term, category);
-        }
+            mainWindow.SubmitQuery(query);
 
         mainWindow.IsOpen = true;
-    }
-
-    private static (string Term, SearchCategory Category) ParseCategoryPrefix(string query)
-    {
-        var colon = query.IndexOf(':');
-        if (colon > 0)
-        {
-            var category = query[..colon].ToLowerInvariant() switch
-            {
-                "item" => SearchCategory.Items,
-                "gather" or "gathering" => SearchCategory.Gathering,
-                "npc" => SearchCategory.Npcs,
-                // "area" survives as an alias from when the tab was named Areas;
-                // "duty" from when duties had their own tab - Other covers them now.
-                // "quest" and "unlock" share the merged Quests & Unlocks tab.
-                "quest" or "unlock" or "unlockable" or "area" => SearchCategory.Unlocks,
-                // Orchestrion rolls, vistas, hunt marks, FATEs and leves have
-                // no tab of their own and ride the unfiltered Other search.
-                "duty" or "orchestrion" or "vista" or "hunt" or "mark" or "fate" or "leve" => SearchCategory.Other,
-                _ => (SearchCategory?)null,
-            };
-            if (category is { } picked)
-                return (query[(colon + 1)..].Trim(), picked);
-        }
-
-        return (query, SearchCategory.Other);
     }
 }

@@ -7,8 +7,8 @@ namespace Wikiway.Core.Tests;
 
 public class WikiProviderTests
 {
-    private static NormalizedQuery Query(string term, SearchCategory category = SearchCategory.Other) =>
-        new(term, term, QueryIntent.Unknown, category);
+    private static NormalizedQuery Query(string term, QueryIntent intent = QueryIntent.Unknown) =>
+        new(term, term, intent);
 
     [Fact]
     public async Task MapsHitsToWikiResultsInRelevanceOrder()
@@ -29,14 +29,14 @@ public class WikiProviderTests
     }
 
     [Fact]
-    public async Task ItemsCategoryEmitsSectionsFromMatchingHeadings()
+    public async Task AcquisitionIntentEmitsSectionsFromMatchingHeadings()
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(new WikiSearchHit("Iron Ingot", 1, ""))
         {
             Sections = [new WikiSection("2", "Treasure Hunt", 1), new WikiSection("5", "Used For", 1)],
         });
 
-        var result = await provider.SearchAsync(Query("iron ingot", SearchCategory.Items), CancellationToken.None);
+        var result = await provider.SearchAsync(Query("iron ingot", QueryIntent.Acquisition), CancellationToken.None);
 
         var sections = Assert.IsType<WikiSectionsResult>(result.Results[0]);
         var section = Assert.Single(sections.Sections);
@@ -53,26 +53,26 @@ public class WikiProviderTests
             Sections = [new WikiSection("1", "Lore", 1)],
         });
 
-        var result = await provider.SearchAsync(Query("iron ingot", SearchCategory.Items), CancellationToken.None);
+        var result = await provider.SearchAsync(Query("iron ingot", QueryIntent.Acquisition), CancellationToken.None);
 
         var first = Assert.IsType<WikiPageResult>(Assert.Single(result.Results));
         Assert.Equal("Iron Ingot", first.Title);
     }
 
     [Fact]
-    public async Task UnlocksCategoryBoostsExactTitleToFullScore()
+    public async Task UnlockIntentBoostsExactTitleToFullScore()
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
             new WikiSearchHit("The Ultimate Weapon", 1, "")));
 
         var result = await provider.SearchAsync(
-            Query("the ultimate weapon", SearchCategory.Unlocks), CancellationToken.None);
+            Query("the ultimate weapon", QueryIntent.Unlock), CancellationToken.None);
 
         Assert.Equal(1.0, result.Results[0].Score);
     }
 
     [Fact]
-    public async Task UnlocksCategoryCombinesTitleBoostWithUnlockSections()
+    public async Task UnlockIntentCombinesTitleBoostWithUnlockSections()
     {
         var provider = new ConsoleGamesWikiProvider(new StubWikiClient(
             new WikiSearchHit("The Gold Saucer", 1, ""))
@@ -81,13 +81,26 @@ public class WikiProviderTests
         });
 
         var result = await provider.SearchAsync(
-            Query("the gold saucer", SearchCategory.Unlocks), CancellationToken.None);
+            Query("the gold saucer", QueryIntent.Unlock), CancellationToken.None);
 
         var sections = Assert.IsType<WikiSectionsResult>(result.Results[0]);
         var section = Assert.Single(sections.Sections);
         Assert.Equal("Unlocking", section.Heading);
         var page = Assert.IsType<WikiPageResult>(result.Results[1]);
         Assert.Equal(1.0, page.Score);
+    }
+
+    [Fact]
+    public async Task LocationIntentSkipsSections()
+    {
+        var provider = new ConsoleGamesWikiProvider(new StubWikiClient(new WikiSearchHit("Momodi", 1, ""))
+        {
+            Sections = [new WikiSection("2", "Dropped By", 1)],
+        });
+
+        var result = await provider.SearchAsync(Query("momodi", QueryIntent.Location), CancellationToken.None);
+
+        Assert.IsType<WikiPageResult>(Assert.Single(result.Results));
     }
 
     [Fact]
@@ -122,7 +135,7 @@ public class WikiProviderTests
             SectionsFailure = new OperationCanceledException(),
         });
 
-        var result = await provider.SearchAsync(Query("iron ingot", SearchCategory.Items), CancellationToken.None);
+        var result = await provider.SearchAsync(Query("iron ingot", QueryIntent.Acquisition), CancellationToken.None);
 
         Assert.Equal(ProviderStatus.Ok, result.Status);
         var page = Assert.IsType<WikiPageResult>(Assert.Single(result.Results));

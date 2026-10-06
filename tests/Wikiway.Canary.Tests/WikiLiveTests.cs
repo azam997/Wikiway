@@ -60,7 +60,7 @@ public class WikiLiveTests : IDisposable
     {
         var sections = await Live(() => client.GetSectionsAsync("Iron Ingot", CancellationToken.None));
 
-        var picked = SectionExtractor.SelectSections(SearchCategory.Items, sections);
+        var picked = SectionExtractor.SelectSections(QueryIntent.Acquisition, sections);
         Assert.NotEmpty(picked);
 
         var html = await Live(() =>
@@ -77,7 +77,7 @@ public class WikiLiveTests : IDisposable
     {
         var sections = await Live(() => client.GetSectionsAsync("Aithon Whistle", CancellationToken.None));
 
-        var picked = SectionExtractor.SelectSections(SearchCategory.Items, sections);
+        var picked = SectionExtractor.SelectSections(QueryIntent.Acquisition, sections);
         var duties = picked.FirstOrDefault(s => s.Title.Contains("dut", StringComparison.OrdinalIgnoreCase));
         Assert.NotNull(duties);
 

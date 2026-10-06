@@ -26,16 +26,8 @@ public sealed class ResultRanker
         {
             score += card.Score >= 0.999 ? 2.0 : 1.0;
 
-            // An explicit dropdown pick outweighs an intent inferred from phrasing.
-            score += (query.Category, card.Entity) switch
-            {
-                (SearchCategory.Items, ItemEntity) => 0.5,
-                (SearchCategory.Npcs, NpcEntity) => 0.5,
-                (SearchCategory.Gathering, ItemEntity) => 0.5,
-                (SearchCategory.Unlocks, QuestEntity or DutyEntity { Optional: true }) => 0.5,
-                _ => 0,
-            };
-
+            // A prefix needs no boost here: its kind filter already dropped
+            // every card of another kind.
             score += (query.Intent, card.Entity) switch
             {
                 (QueryIntent.Location, NpcEntity) => 0.25,
@@ -44,7 +36,7 @@ public sealed class ResultRanker
                 (QueryIntent.Acquisition,
                     MountEntity or MinionEntity or OrchestrionEntity or TripleTriadCardEntity) => 0.15,
                 (QueryIntent.Location, VistaEntity or HuntMarkEntity or FateEntity) => 0.15,
-                (QueryIntent.Unlock, AetherCurrentZoneEntity) => 0.15,
+                (QueryIntent.Unlock, DutyEntity or AetherCurrentZoneEntity) => 0.15,
                 _ => 0,
             };
         }

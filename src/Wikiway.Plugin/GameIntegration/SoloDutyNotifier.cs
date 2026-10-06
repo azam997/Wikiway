@@ -1,7 +1,6 @@
 using System;
 using Dalamud.Interface.ImGuiNotification;
 using Wikiway.Core.Abstractions;
-using Wikiway.Core.Models;
 using Wikiway.Plugin.Windows;
 
 namespace Wikiway.Plugin.GameIntegration;
@@ -48,7 +47,7 @@ internal sealed class SoloDutyNotifier : IDisposable
 
         notification.Click += args =>
         {
-            mainWindow.SubmitQuery(dutyName, SearchCategory.Other);
+            mainWindow.SubmitQuery(dutyName);
             mainWindow.IsOpen = true;
             args.Notification.DismissNow();
         };

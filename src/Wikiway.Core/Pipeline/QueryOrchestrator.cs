@@ -23,10 +23,10 @@ public sealed class QueryOrchestrator : IQueryPipeline
         this.providerTimeout = providerTimeout ?? TimeSpan.FromSeconds(15);
     }
 
-    public async Task<QueryResponse> ExecuteAsync(string rawQuery, SearchCategory category, CancellationToken ct)
+    public async Task<QueryResponse> ExecuteAsync(string rawQuery, CancellationToken ct)
     {
         var watch = Stopwatch.StartNew();
-        var query = normalizer.Normalize(rawQuery, category);
+        var query = normalizer.Normalize(rawQuery);
 
         var searches = providers
             .Select(p => p.IsAvailable
@@ -36,7 +36,7 @@ public sealed class QueryOrchestrator : IQueryPipeline
 
         var providerResults = await Task.WhenAll(searches).ConfigureAwait(false);
         var merged = ranker.Merge(query, providerResults);
-        var (results, detail) = ResultJoiner.AttachWikiSections(merged, providerResults);
+        var (results, detail) = ResultJoiner.AttachWikiSections(merged, providerResults, query.Intent);
 
         return new QueryResponse(query, results, detail, watch.Elapsed);
     }

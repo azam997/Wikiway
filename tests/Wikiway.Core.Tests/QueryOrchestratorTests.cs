@@ -21,7 +21,7 @@ public class QueryOrchestratorTests
             new StubProvider("b", [WikiResult("Momodi", 0.9)]),
         ]);
 
-        var result = await orchestrator.ExecuteAsync("momodi", SearchCategory.Other, CancellationToken.None);
+        var result = await orchestrator.ExecuteAsync("momodi", CancellationToken.None);
 
         Assert.Equal(2, result.Results.Count);
     }
@@ -34,7 +34,7 @@ public class QueryOrchestratorTests
             new StubProvider("ok", [WikiResult("Momodi", 0.9)]),
         ]);
 
-        var result = await orchestrator.ExecuteAsync("momodi", SearchCategory.Other, CancellationToken.None);
+        var result = await orchestrator.ExecuteAsync("momodi", CancellationToken.None);
 
         Assert.Single(result.Results);
         var failed = result.ProviderDetail.Single(p => p.ProviderId == "boom");
@@ -53,7 +53,7 @@ public class QueryOrchestratorTests
         })
         { Available = false };
 
-        var result = await Build([provider]).ExecuteAsync("momodi", SearchCategory.Other, CancellationToken.None);
+        var result = await Build([provider]).ExecuteAsync("momodi", CancellationToken.None);
 
         Assert.False(invoked);
         Assert.Equal(ProviderStatus.Skipped, result.ProviderDetail.Single().Status);
@@ -69,7 +69,7 @@ public class QueryOrchestratorTests
         });
 
         var orchestrator = Build([slow], timeout: TimeSpan.FromMilliseconds(50));
-        var result = await orchestrator.ExecuteAsync("momodi", SearchCategory.Other, CancellationToken.None);
+        var result = await orchestrator.ExecuteAsync("momodi", CancellationToken.None);
 
         Assert.Equal(ProviderStatus.Failed, result.ProviderDetail.Single().Status);
     }
@@ -84,18 +84,18 @@ public class QueryOrchestratorTests
             return new ProviderResult("slow", [], ProviderStatus.Ok);
         });
 
-        var task = Build([slow]).ExecuteAsync("momodi", SearchCategory.Other, cts.Token);
+        var task = Build([slow]).ExecuteAsync("momodi", cts.Token);
         cts.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
     }
 
     [Fact]
-    public async Task CategoryReachesProviders()
+    public async Task PrefixCategoryReachesProviders()
     {
         var provider = new StubProvider("spy", []);
 
-        await Build([provider]).ExecuteAsync("iron ingot", SearchCategory.Items, CancellationToken.None);
+        await Build([provider]).ExecuteAsync("item: iron ingot", CancellationToken.None);
 
         Assert.Equal(SearchCategory.Items, provider.LastQuery!.Category);
         Assert.Equal(QueryIntent.Acquisition, provider.LastQuery.Intent);
@@ -110,7 +110,7 @@ public class QueryOrchestratorTests
             return new ProviderResult("slow", [], ProviderStatus.Ok);
         });
 
-        var result = await Build([slow]).ExecuteAsync("momodi", SearchCategory.Other, CancellationToken.None);
+        var result = await Build([slow]).ExecuteAsync("momodi", CancellationToken.None);
 
         Assert.True(result.Elapsed > TimeSpan.Zero);
     }

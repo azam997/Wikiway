@@ -1,15 +1,18 @@
 using System;
 using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Gui.ContextMenu;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
+using Wikiway.Core.Pipeline;
 using Wikiway.Plugin.Windows;
 
 namespace Wikiway.Plugin.GameIntegration;
 
 internal sealed class ContextMenuIntegration : IDisposable
 {
-    // GameGui.HoveredItem is a raw id with item flags folded in: collectables
+    // Item ids read from game UI state have item flags folded in: collectables
     // are Item row + 500,000, HQ is row + 1,000,000, and ids of 2,000,000 and
     // up are EventItem (key item) sheet rows the Item sheet can't resolve.
     private const ulong CollectableItemIdOffset = 500_000;
@@ -41,31 +44,60 @@ internal sealed class ContextMenuIntegration : IDisposable
                 AddLookup(args, store.GetItemName(item.BaseItemId), SearchCategory.Items);
                 break;
 
-            case MenuTargetDefault when args.AddonName == "ChatLog":
-            {
-                // The chat context menu target doesn't carry the item link; the
-                // hovered-item state does, with the HQ or collectable flag
-                // folded into the id. Event items live in a different sheet.
-                var hovered = Plugin.GameGui.HoveredItem;
-                if (hovered is not 0 and < EventItemIdBase)
-                {
-                    var baseId = (uint)(hovered switch
-                    {
-                        >= HqItemIdOffset => hovered - HqItemIdOffset,
-                        >= CollectableItemIdOffset => hovered - CollectableItemIdOffset,
-                        _ => hovered,
-                    });
-                    AddLookup(args, store.GetItemName(baseId), SearchCategory.Items);
-                }
-
+            case MenuTargetDefault when BaseItemId(ItemIdFromWindow(args.AddonName)) is { } itemId:
+                AddLookup(args, store.GetItemName(itemId), SearchCategory.Items);
                 break;
-            }
 
             case MenuTargetDefault { TargetObject: { ObjectKind: ObjectKind.EventNpc } npc }:
                 AddLookup(args, store.GetNpcName(npc.BaseId) ?? npc.Name.TextValue, SearchCategory.Npcs);
                 break;
+
+            // Hunt marks resolve from game data; other enemies fall through
+            // to the wiki. Neither has a filter, so the search is unprefixed.
+            case MenuTargetDefault { TargetObject: IBattleNpc { BattleNpcKind: BattleNpcSubKind.Combatant } enemy }:
+                AddLookup(args, enemy.Name.TextValue, SearchCategory.All);
+                break;
         }
     }
+
+    // These windows' menus carry no item, so the id comes from where the game
+    // parks the right-clicked item: the hovered-item state for chat links, the
+    // window's agent otherwise. Agent field names are FFXIVClientStructs',
+    // checked by reflection against the installed build. Menus open on the
+    // game main thread, so the reads need no marshalling (see MapLinkOpener).
+    private static unsafe ulong ItemIdFromWindow(string? addonName)
+    {
+        switch (addonName)
+        {
+            case "ChatLog":
+                return Plugin.GameGui.HoveredItem;
+            case "RecipeNote":
+                var recipeNote = AgentRecipeNote.Instance();
+                return recipeNote == null ? 0 : recipeNote->ContextMenuResultItemId;
+            case "RecipeTree" or "RecipeMaterialList" or "RecipeProductList":
+                var recipeItem = AgentRecipeItemContext.Instance();
+                return recipeItem == null ? 0 : recipeItem->ResultItemId;
+            case "GatheringNote":
+                var gatheringNote = AgentGatheringNote.Instance();
+                return gatheringNote == null ? 0 : gatheringNote->ContextMenuItemId;
+            case "ContentsInfoDetail":
+                var timers = AgentContentsTimer.Instance();
+                return timers == null ? 0 : timers->ContextMenuItemId;
+            case "DailyQuestSupply":
+                var deliveries = AgentDailyQuestSupply.Instance();
+                return deliveries == null ? 0 : deliveries->ContextMenuItemId;
+            default:
+                return 0;
+        }
+    }
+
+    private static uint? BaseItemId(ulong raw) => raw switch
+    {
+        0 or >= EventItemIdBase => null,
+        >= HqItemIdOffset => (uint)(raw - HqItemIdOffset),
+        >= CollectableItemIdOffset => (uint)(raw - CollectableItemIdOffset),
+        _ => (uint)raw,
+    };
 
     private void AddLookup(IMenuOpenedArgs args, string? name, SearchCategory category)
     {
@@ -79,7 +111,7 @@ internal sealed class ContextMenuIntegration : IDisposable
             PrefixColor = 539,
             OnClicked = _ =>
             {
-                mainWindow.SubmitQuery(name, category);
+                mainWindow.SubmitQuery(QueryNormalizer.Prefixed(category, name));
                 mainWindow.IsOpen = true;
             },
         });

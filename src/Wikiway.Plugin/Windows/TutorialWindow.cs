@@ -12,27 +12,28 @@ public class TutorialWindow : Window
         ("Welcome to Wikiway",
             "Wikiway looks things up for you: local game data first, the wiki second.\n\n" +
             "Open it any time with /wikiway (or /ww), optionally with a question - " +
-            "\"/wikiway where is momodi\".\n\n" +
-            "You can scope a command search with a prefix: \"/wikiway quest:the ultimate weapon\" " +
-            "(item:, quest:, gather:, npc:, unlock:)."),
-        ("Search categories",
-            "The tabs above the search box narrow what a search means, and each tab " +
-            "keeps its own search and results.\n\n" +
-            "Items - how to obtain an item: marketboard, vendors, drops, crafting.\n" +
-            "Quests & Unlocks - quests, their prerequisite chains, and optional content " +
+            "\"/wikiway where is momodi\"."),
+        ("Narrowing a search",
+            "Phrasing steers the results: \"where is\" favors NPCs, \"how do i get\" favors " +
+            "items, \"how do i unlock\" favors quests and duties.\n\n" +
+            "Start with a prefix to see only one kind of result. Ex: \"quest: the ultimate weapon\".\n" +
+            "item: - how to obtain an item: marketboard, vendors, drops, crafting.\n" +
+            "quest: - quests, their prerequisite chains, and optional content " +
             "from side dungeons and raids to zones like Bozja or the Firmament, " +
             "with how to unlock it all.\n" +
-            "Gathering - gatherable materials: node types, levels and locations.\n" +
-            "NPCs - locations, with a map flag one click away.\n\n" +
-            "Other is a free search across everything, duties included."),
+            "gather: - gatherable materials: node types, levels and locations.\n" +
+            "npc: - locations, with a map flag one click away.\n\n" +
+            "The arrow left of the search box goes back to your previous search."),
         ("Right-click lookups",
-            "Right-click an inventory item, an item link in chat, or an NPC and choose " +
-            "\"Look up on Wikiway\" to run the matching search instantly.\n\n" +
+            "Right-click an item, an NPC or an enemy and choose " +
+            "\"Look up on Wikiway\" to run the matching search instantly. Items work from your " +
+            "inventory, chat links, the crafting and gathering logs, the timers window and " +
+            "custom deliveries.\n\n" +
             "This can be turned off in settings."),
         ("Flags, toasts and settings",
             "NPC results include a \"Flag map\" button that opens the map at their location.\n\n" +
             "Entering a solo duty shows a small notification - click it to look the duty up.\n\n" +
-            "The Quests & Unlocks tab lists your journal's active quests - pick one to look it up.\n\n" +
+            "Before you search, the window lists your journal's active quests - pick one to look it up.\n\n" +
             "Settings live in the plugin installer or via the Wikiway window, and the (?) markers " +
             "explain individual options. Enjoy!"),
     ];

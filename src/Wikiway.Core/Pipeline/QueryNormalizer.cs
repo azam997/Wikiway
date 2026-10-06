@@ -39,9 +39,42 @@ public sealed class QueryNormalizer
         ("who's", QueryIntent.General),
     ];
 
-    public NormalizedQuery Normalize(string raw, SearchCategory category = SearchCategory.Other)
+    // The first prefix listed for a category is the one Prefixed writes.
+    private static readonly (string Prefix, SearchCategory Category)[] Prefixes =
+    [
+        ("item", SearchCategory.Items),
+        ("quest", SearchCategory.Unlocks),
+        ("npc", SearchCategory.Npcs),
+        ("gather", SearchCategory.Gathering),
+        ("gathering", SearchCategory.Gathering),
+        ("unlock", SearchCategory.Unlocks),
+        ("unlockable", SearchCategory.Unlocks),
+        ("area", SearchCategory.Unlocks),
+        // Kinds without a filter of their own: the prefix is just dropped.
+        ("duty", SearchCategory.All),
+        ("orchestrion", SearchCategory.All),
+        ("vista", SearchCategory.All),
+        ("hunt", SearchCategory.All),
+        ("mark", SearchCategory.All),
+        ("fate", SearchCategory.All),
+        ("leve", SearchCategory.All),
+    ];
+
+    // Lookups opened from a result card or a right-click carry their filter
+    // as visible text, so the search box always shows what is being searched.
+    public static string Prefixed(SearchCategory category, string term)
     {
-        var text = StripPunctuation(raw).Trim();
+        if (category == SearchCategory.All)
+            return term;
+
+        var prefix = Prefixes.First(p => p.Category == category).Prefix;
+        return $"{prefix}: {term}";
+    }
+
+    public NormalizedQuery Normalize(string raw)
+    {
+        var (unprefixed, category) = SplitPrefix(raw);
+        var text = StripPunctuation(unprefixed).Trim();
         var lowered = text.ToLowerInvariant();
 
         var intent = QueryIntent.Unknown;
@@ -58,7 +91,7 @@ public sealed class QueryNormalizer
 
         lowered = StripLeadingArticle(lowered);
 
-        // A typed leading phrase is a stronger signal than the tab.
+        // A typed leading phrase is a stronger signal than the prefix.
         if (intent == QueryIntent.Unknown)
         {
             intent = category switch
@@ -72,6 +105,22 @@ public sealed class QueryNormalizer
         }
 
         return new NormalizedQuery(raw, lowered, intent, category);
+    }
+
+    private static (string Text, SearchCategory Category) SplitPrefix(string raw)
+    {
+        var colon = raw.IndexOf(':');
+        if (colon > 0)
+        {
+            var typed = raw[..colon].Trim();
+            foreach (var (prefix, category) in Prefixes)
+            {
+                if (typed.Equals(prefix, StringComparison.OrdinalIgnoreCase))
+                    return (raw[(colon + 1)..], category);
+            }
+        }
+
+        return (raw, SearchCategory.All);
     }
 
     private static readonly string[] Articles = ["the ", "an ", "a "];

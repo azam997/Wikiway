@@ -1,5 +1,6 @@
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
+using Wikiway.Core.Wiki;
 
 namespace Wikiway.Core.Pipeline;
 
@@ -10,16 +11,25 @@ public static class ResultJoiner
     // leading-article mismatches ("The Bozjan Southern Front" wiki page vs the
     // "Bozjan Southern Front" card) join only while unambiguous on both sides.
     // Provider counts are adjusted so the count strip still matches the rows drawn.
+    // Only cards the headings were picked for can join (SectionExtractor.Fits),
+    // so the Gold Saucer page's sections never land on an NPC named Gold
+    // Saucer. A bare name's sections were fetched on spec; any that find no
+    // card are dropped rather than shown on their own.
     public static (IReadOnlyList<SearchResult> Results, IReadOnlyList<ProviderResult> ProviderDetail) AttachWikiSections(
-        IReadOnlyList<SearchResult> results, IReadOnlyList<ProviderResult> providerDetail)
+        IReadOnlyList<SearchResult> results, IReadOnlyList<ProviderResult> providerDetail, QueryIntent intent)
     {
+        var dropUnjoined = intent == QueryIntent.Unknown;
+        bool Joinable(EntityCardResult card) => SectionExtractor.Fits(intent, card.Entity);
+        bool Dropped(WikiSectionsResult sections, HashSet<string> consumed) =>
+            dropUnjoined || consumed.Contains(sections.Title);
+
         var sectionsByTitle = new Dictionary<string, WikiSectionsResult>(StringComparer.OrdinalIgnoreCase);
         var cardTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var result in results)
         {
             if (result is WikiSectionsResult sections)
                 sectionsByTitle.TryAdd(sections.Title, sections);
-            else if (result is EntityCardResult card)
+            else if (result is EntityCardResult card && Joinable(card))
                 cardTitles.Add(card.Title);
         }
 
@@ -36,7 +46,7 @@ public static class ResultJoiner
 
         JoinArticleStripped(sectionsByTitle, cardTitles, sectionsByCardTitle, consumed);
 
-        if (sectionsByCardTitle.Count == 0)
+        if (sectionsByCardTitle.Count == 0 && !dropUnjoined)
             return (results, providerDetail);
 
         var attached = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -45,9 +55,10 @@ public static class ResultJoiner
         {
             switch (result)
             {
-                case WikiSectionsResult sections when consumed.Contains(sections.Title):
+                case WikiSectionsResult sections when Dropped(sections, consumed):
                     break;
-                case EntityCardResult card when sectionsByCardTitle.TryGetValue(card.Title, out var source) && attached.Add(card.Title):
+                case EntityCardResult card when Joinable(card) &&
+                    sectionsByCardTitle.TryGetValue(card.Title, out var source) && attached.Add(card.Title):
                     output.Add(card with { WikiSections = source.Sections, WikiUrl = source.PageUrl });
                     break;
                 default:
@@ -60,7 +71,7 @@ public static class ResultJoiner
             .Select(p => p with
             {
                 Results = p.Results
-                    .Where(r => r is not WikiSectionsResult s || !consumed.Contains(s.Title))
+                    .Where(r => r is not WikiSectionsResult s || !Dropped(s, consumed))
                     .ToList(),
             })
             .ToList();

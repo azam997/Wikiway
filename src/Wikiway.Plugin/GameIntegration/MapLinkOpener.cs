@@ -9,7 +9,8 @@ internal static class MapLinkOpener
     // the game main thread - the same thread as Framework.Update - so game
     // calls made from click handlers need no RunOnFrameworkThread marshalling.
     // ActiveQuestReader and QuestProgressTracker rely on the same invariant
-    // for their unsafe QuestManager reads.
+    // for their unsafe QuestManager reads, ContextMenuIntegration for its
+    // agent reads (context menus also open on the main thread).
     public static void Open(MapLocation location)
     {
         // Plugin windows still render at character select and the DC-travel

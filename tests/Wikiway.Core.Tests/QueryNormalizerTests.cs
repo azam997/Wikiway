@@ -96,47 +96,91 @@ public class QueryNormalizerTests
     }
 
     [Fact]
-    public void CategorySuppliesDefaultIntent()
+    public void PrefixSetsCategoryAndDefaultIntent()
     {
-        var q = normalizer.Normalize("iron ingot", SearchCategory.Items);
+        var q = normalizer.Normalize("item: Iron Ingot");
 
+        Assert.Equal("iron ingot", q.Term);
         Assert.Equal(QueryIntent.Acquisition, q.Intent);
         Assert.Equal(SearchCategory.Items, q.Category);
     }
 
     [Fact]
-    public void LeadingPhraseBeatsCategoryDefault()
+    public void PrefixIsCaseAndSpaceInsensitive()
     {
-        var q = normalizer.Normalize("where is momodi", SearchCategory.Items);
+        var q = normalizer.Normalize("NPC :momodi");
 
+        Assert.Equal("momodi", q.Term);
+        Assert.Equal(SearchCategory.Npcs, q.Category);
+    }
+
+    [Fact]
+    public void LeadingPhraseBeatsPrefixDefault()
+    {
+        var q = normalizer.Normalize("item: where is momodi");
+
+        Assert.Equal("momodi", q.Term);
         Assert.Equal(QueryIntent.Location, q.Intent);
         Assert.Equal(SearchCategory.Items, q.Category);
     }
 
     [Fact]
-    public void GatheringCategoryImpliesAcquisition()
+    public void GatherPrefixImpliesAcquisition()
     {
-        var q = normalizer.Normalize("iron ore", SearchCategory.Gathering);
+        var q = normalizer.Normalize("gather: iron ore");
 
         Assert.Equal(QueryIntent.Acquisition, q.Intent);
         Assert.Equal(SearchCategory.Gathering, q.Category);
     }
 
     [Fact]
-    public void UnlocksCategoryImpliesUnlock()
+    public void QuestPrefixImpliesUnlock()
     {
-        var q = normalizer.Normalize("the ultimate weapon", SearchCategory.Unlocks);
+        var q = normalizer.Normalize("quest: the ultimate weapon");
 
+        Assert.Equal("ultimate weapon", q.Term);
         Assert.Equal(QueryIntent.Unlock, q.Intent);
         Assert.Equal(SearchCategory.Unlocks, q.Category);
     }
 
     [Fact]
-    public void NoCategoryLeavesIntentUnknown()
+    public void FilterlessPrefixIsDroppedFromTheTerm()
     {
-        var q = normalizer.Normalize("momodi", SearchCategory.Other);
+        var q = normalizer.Normalize("duty: the aurum vale");
+
+        Assert.Equal("aurum vale", q.Term);
+        Assert.Equal(SearchCategory.All, q.Category);
+    }
+
+    [Fact]
+    public void UnknownPrefixStaysPartOfTheTerm()
+    {
+        var q = normalizer.Normalize("eureka: anemos");
+
+        Assert.Equal("eureka: anemos", q.Term);
+        Assert.Equal(SearchCategory.All, q.Category);
+    }
+
+    [Fact]
+    public void NoPrefixLeavesIntentUnknown()
+    {
+        var q = normalizer.Normalize("momodi");
 
         Assert.Equal(QueryIntent.Unknown, q.Intent);
-        Assert.Equal(SearchCategory.Other, q.Category);
+        Assert.Equal(SearchCategory.All, q.Category);
+    }
+
+    [Theory]
+    [InlineData(SearchCategory.Items)]
+    [InlineData(SearchCategory.Npcs)]
+    [InlineData(SearchCategory.Gathering)]
+    [InlineData(SearchCategory.Unlocks)]
+    [InlineData(SearchCategory.All)]
+    public void PrefixedRoundTripsThroughNormalize(SearchCategory category)
+    {
+        var q = normalizer.Normalize(QueryNormalizer.Prefixed(category, "Momodi"));
+
+        Assert.Equal("momodi", q.Term);
+        Assert.Equal(category, q.Category);
     }
 }

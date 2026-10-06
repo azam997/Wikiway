@@ -11,6 +11,7 @@ using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using Wikiway.Core.Models;
+using Wikiway.Core.Pipeline;
 using Wikiway.Plugin.GameIntegration;
 using Wikiway.Plugin.Ui;
 
@@ -22,36 +23,25 @@ public partial class MainWindow : Window, IDisposable
     private const int StyleColorCount = 21;
     private const int StyleVarCount = 3;
     private const int QueryCapacity = 256;
+    private const int MaxHistory = 20;
 
     // Hint entities are canary-pinned names, so the samples always resolve.
-    private static readonly (string Label, string Hint, SearchCategory Value)[] Categories =
-    [
-        ("Items", "how do i get an iron ingot...", SearchCategory.Items),
-        ("Quests & Unlocks", "how do i unlock the gold saucer...", SearchCategory.Unlocks),
-        ("Gathering", "where can i get iron ore...", SearchCategory.Gathering),
-        ("NPCs", "where is momodi...", SearchCategory.Npcs),
-        ("Other", "what is the aurum vale...", SearchCategory.Other),
-    ];
+    private const string InputHint = "where is momodi, item: iron ingot...";
 
     private readonly Plugin plugin;
-    private readonly SearchSession[] sessions;
+    private readonly SearchSession session = new();
+    // Earlier searches for the Back button, oldest first.
+    private readonly List<string> history = [];
 
-    private int categoryIndex = Categories.Length - 1;
     private bool focusInput;
     private (string Query, SearchCategory Category)? queuedNavigation;
     private List<ActiveQuestEntry> activeQuests = [];
     private long activeQuestsRefreshAt;
     private readonly HashSet<string> revealedSpoilers = [];
 
-    private SearchSession Active => sessions[categoryIndex];
-
     public MainWindow(Plugin plugin) : base("Wikiway")
     {
         this.plugin = plugin;
-
-        sessions = new SearchSession[Categories.Length];
-        for (var i = 0; i < sessions.Length; i++)
-            sessions[i] = new SearchSession();
 
         SizeConstraints = new WindowSizeConstraints
         {
@@ -67,27 +57,21 @@ public partial class MainWindow : Window, IDisposable
     public void Dispose()
     {
         Plugin.ClientState.Logout -= OnLogout;
-        foreach (var session in sessions)
-            session.Dispose();
+        session.Dispose();
     }
 
-    internal Task[] ActiveSearches() =>
-        sessions.Where(s => s.Pending != null).Select(s => (Task)s.Pending!).ToArray();
+    internal Task? PendingSearch => session.Pending;
 
     private void OnLogout(int type, int code) => revealedSpoilers.Clear();
 
-    public void SubmitQuery(string query) => SubmitQuery(query, SearchCategory.Other);
-
     // Callers run on the game main thread outside Draw (commands, context
     // menu, notification clicks); mid-draw paths queue via queuedNavigation.
-    public void SubmitQuery(string query, SearchCategory category)
+    public void SubmitQuery(string query)
     {
         if (query.Length > QueryCapacity)
             query = query[..QueryCapacity];
-        var index = Array.FindIndex(Categories, c => c.Value == category);
-        categoryIndex = index >= 0 ? index : Categories.Length - 1;
-        Active.QueryInput = query;
-        RunQuery(Active, category);
+        session.QueryInput = query;
+        RunQuery();
     }
 
     public override void OnOpen() => focusInput = true;
@@ -140,46 +124,35 @@ public partial class MainWindow : Window, IDisposable
             if (queuedNavigation is { } nav)
             {
                 queuedNavigation = null;
-                SubmitQuery(nav.Query, nav.Category);
+                SubmitQuery(QueryNormalizer.Prefixed(nav.Category, nav.Query));
             }
 
-            if (Active.PendingScroll == null)
-                Active.ScrollY = ImGui.GetScrollY();
+            if (session.ScrollToTop)
+            {
+                ImGui.SetScrollY(0);
+                session.ScrollToTop = false;
+            }
 
             DrawBrandStrip();
-            DrawCategoryStrip();
-
-            ImGui.PushID(categoryIndex);
-            if (Active.PendingScroll is { } scrollY)
-            {
-                // SetScrollY clamps against ScrollMax from the previous frame,
-                // which right after a tab switch still belongs to the old tab -
-                // hence the second application a frame later.
-                ImGui.SetScrollY(scrollY);
-                if (--Active.PendingScrollFrames <= 0)
-                    Active.PendingScroll = null;
-            }
-
             DrawSearchInput();
             Widgets.FadingRule();
             ImGui.Spacing();
 
-            HarvestAll();
+            Harvest();
 
-            // Once a search occupies the tab, the journal list moves behind a
-            // button above the results instead.
-            if (QuestPickerVisible && (Active.Pending != null || Active.Response != null || Active.Error != null))
+            // Once a search is showing, the journal list moves behind a button
+            // above the results instead.
+            if (QuestPickerVisible && (session.Pending != null || session.Response != null || session.Error != null))
                 DrawQuestPicker();
 
-            if (Active.Pending != null)
+            if (session.Pending != null)
                 DrawPendingState();
-            else if (Active.Error != null)
+            else if (session.Error != null)
                 DrawErrorState();
-            else if (Active.Response == null)
+            else if (session.Response == null)
                 DrawIdleState();
             else
-                DrawResults(Active.Response);
-            ImGui.PopID();
+                DrawResults(session.Response);
         }
         catch (Exception e)
         {
@@ -189,8 +162,8 @@ public partial class MainWindow : Window, IDisposable
             // Neither catch pops what was pushed before the throw, hence the
             // explicit unwind - see ImGuiUnwind.
             Plugin.Log.Error(e, "Main window draw failed; dropping the current result view.");
-            Active.Response = null;
-            Active.Error ??= "something went wrong drawing results - run the search again";
+            session.Response = null;
+            session.Error ??= "something went wrong drawing results - run the search again";
             ImGuiUnwind.To(root);
         }
     }
@@ -235,69 +208,23 @@ public partial class MainWindow : Window, IDisposable
         ImGui.Spacing();
     }
 
-    private void DrawCategoryStrip()
-    {
-        var scale = ImGuiHelpers.GlobalScale;
-        var fonts = plugin.Fonts;
-        var dl = ImGui.GetWindowDrawList();
-
-        fonts.Body13.Push();
-        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, Vector2.Zero);
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, 0f);
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-        ImGui.BeginGroup();
-        for (var i = 0; i < Categories.Length; i++)
-        {
-            if (i > 0)
-            {
-                ImGui.SameLine();
-                var edge = ImGui.GetCursorScreenPos();
-                dl.AddLine(edge, edge with { Y = ImGui.GetItemRectMax().Y }, Theme.DividerU);
-            }
-
-            var active = i == categoryIndex;
-            ImGui.PushStyleColor(ImGuiCol.Button, active ? Theme.Accent800 : Vector4.Zero);
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, active ? Theme.Accent800 : Theme.Accent900);
-            ImGui.PushStyleColor(ImGuiCol.ButtonActive, Theme.Accent800);
-            ImGui.PushStyleColor(ImGuiCol.Text, active ? Theme.Accent100 : Theme.Neutral500);
-            if (ImGui.Button($"{Categories[i].Label}##seg{i}") && i != categoryIndex)
-            {
-                categoryIndex = i;
-                Active.PendingScroll = Active.ScrollY;
-                Active.PendingScrollFrames = 2;
-            }
-
-            ImGui.PopStyleColor(4);
-
-            if (sessions[i].Pending != null)
-            {
-                var max = ImGui.GetItemRectMax();
-                var min = ImGui.GetItemRectMin();
-                dl.AddCircleFilled(new Vector2(max.X - (4f * scale), min.Y + (4f * scale)), 2f * scale, Theme.AccentU);
-            }
-        }
-
-        ImGui.EndGroup();
-        ImGui.PopStyleVar(3);
-        fonts.Body13.Pop();
-        dl.AddRect(ImGui.GetItemRectMin(), ImGui.GetItemRectMax(), Theme.DividerU, Theme.RadiusMd * scale);
-    }
-
     private void DrawSearchInput()
     {
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
         var dl = ImGui.GetWindowDrawList();
-        var session = Active;
 
         fonts.Body14.Push();
         var searchWidth = ImGui.CalcTextSize("Search").X + (Theme.Space4 * 2f * scale);
         fonts.Body14.Pop();
 
+        DrawBackButton();
+
         ImGui.SameLine(0, Theme.Space2 * scale);
         ImGuiComponents.HelpMarker(
             "Plain names or questions both work. Ex: \"where is momodi\" or just \"momodi\". " +
-            "Using the tabs provided determines what kind of results you get.");
+            "Start with item:, quest:, npc: or gather: to search only that kind. " +
+            "Ex: \"quest: the ultimate weapon\".");
 
         ImGui.SameLine(0, Theme.Space3 * scale);
         if (focusInput)
@@ -317,7 +244,7 @@ public partial class MainWindow : Window, IDisposable
         ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
         var inputPos = ImGui.GetCursorScreenPos();
         ImGui.SetNextItemWidth(-(searchWidth + (Theme.Space3 * scale)));
-        var submitted = ImGui.InputTextWithHint("##wikiway-query", Categories[categoryIndex].Hint,
+        var submitted = ImGui.InputTextWithHint("##wikiway-query", InputHint,
             ref session.QueryInput, 256, ImGuiInputTextFlags.EnterReturnsTrue);
         var inputHeight = ImGui.GetItemRectSize().Y;
         ImGui.PopStyleVar(2);
@@ -338,13 +265,33 @@ public partial class MainWindow : Window, IDisposable
         fonts.Body14.Pop();
 
         if (submitted)
-            RunQuery(session, Categories[categoryIndex].Value);
+            RunQuery();
     }
 
-    // The picker belongs to the quest tab; other tabs keep the plain input.
-    private bool QuestPickerVisible =>
-        plugin.Configuration.ActiveQuestPickerEnabled
-        && Categories[categoryIndex].Value == SearchCategory.Unlocks;
+    private void DrawBackButton()
+    {
+        var scale = ImGuiHelpers.GlobalScale;
+
+        plugin.Fonts.Body14.Push();
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space3, Theme.Space2) * scale);
+        ImGui.BeginDisabled(history.Count == 0);
+        var clicked = Widgets.GhostButton($"{FontAwesomeIcon.ArrowLeft.ToIconString()}##wikiway-back");
+        ImGui.EndDisabled();
+        ImGui.PopStyleVar();
+        plugin.Fonts.Body14.Pop();
+
+        if (history.Count > 0 && ImGui.IsItemHovered())
+            ImGui.SetTooltip($"Back to \"{history[^1]}\"");
+
+        if (!clicked)
+            return;
+
+        session.QueryInput = history[^1];
+        history.RemoveAt(history.Count - 1);
+        RunQuery(remember: false);
+    }
+
+    private bool QuestPickerVisible => plugin.Configuration.ActiveQuestPickerEnabled;
 
     private void DrawQuestPicker()
     {
@@ -416,7 +363,7 @@ public partial class MainWindow : Window, IDisposable
     {
         plugin.Fonts.Body14.Push();
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent300);
-        ImGui.TextWrapped(Active.Error!);
+        ImGui.TextWrapped(session.Error!);
         ImGui.PopStyleColor();
         plugin.Fonts.Body14.Pop();
     }
@@ -469,71 +416,75 @@ public partial class MainWindow : Window, IDisposable
         fonts.Citation12.Pop();
     }
 
-    // The pipeline runs on the thread pool; the draw loop just polls the
-    // tasks. Background tabs harvest too, so their searches finish unwatched.
-    private void HarvestAll()
+    // The pipeline runs on the thread pool; the draw loop just polls the task.
+    private void Harvest()
     {
-        foreach (var session in sessions)
+        if (session.Pending is not { IsCompleted: true })
+            return;
+
+        if (session.Pending.IsCompletedSuccessfully)
         {
-            if (session.Pending is not { IsCompleted: true })
-                continue;
-
-            if (session.Pending.IsCompletedSuccessfully)
+            session.Response = session.Pending.Result;
+            session.AboveGate.Clear();
+            session.BelowGate.Clear();
+            session.Wiki.Clear();
+            // Wiki rows skip the score gate: their scores rank data-page
+            // quality, not relevance, and burying them under "low
+            // confidence" hid the path to the wiki page.
+            foreach (var hit in session.Response.Results)
             {
-                session.Response = session.Pending.Result;
-                session.AboveGate.Clear();
-                session.BelowGate.Clear();
-                session.Wiki.Clear();
-                // Wiki rows skip the score gate: their scores rank data-page
-                // quality, not relevance, and burying them under "low
-                // confidence" hid the path to the wiki page.
-                foreach (var hit in session.Response.Results)
-                {
-                    if (hit is WikiPageResult or WikiSectionsResult)
-                        session.Wiki.Add(hit);
-                    else
-                        (hit.Score < ScoreGate ? session.BelowGate : session.AboveGate).Add(hit);
-                }
-
-                session.HasGameResult = session.AboveGate.Exists(hit => hit is EntityCardResult);
-                session.LowRelevanceOpen = false;
-                session.MoreOpen = false;
-                session.WikiOpen = true;
-                session.ExpandedRows.Clear();
-                session.ExpandedChains.Clear();
-                session.ExpandedScenes.Clear();
-                // Grouping cutscene appearances here keeps the per-frame scene
-                // tab from re-running GroupBy on every draw.
-                session.SceneGroups.Clear();
-                foreach (var hit in session.Response.Results)
-                {
-                    if (hit is EntityCardResult { CutsceneAppearances.Count: > 0 } sceneCard)
-                        session.SceneGroups[RowKey(sceneCard)] = sceneCard.CutsceneAppearances
-                            .GroupBy(a => (a.ExpansionOrder, a.Expansion))
-                            .Select(g => new SceneGroup(g.Key.ExpansionOrder, g.Key.Expansion, g.ToList()))
-                            .ToList();
-                }
-
-                if (session.AboveGate.Count > 0 && session.AboveGate[0] is EntityCardResult top && HasDetail(top))
-                    session.ExpandedRows.Add(RowKey(top));
-            }
-            else if (!session.Pending.IsCanceled)
-            {
-                var failure = session.Pending.Exception?.GetBaseException();
-                Plugin.Log.Error(failure, "Search failed.");
-                session.Error = failure?.Message ?? "something went wrong";
+                if (hit is WikiPageResult or WikiSectionsResult)
+                    session.Wiki.Add(hit);
+                else
+                    (hit.Score < ScoreGate ? session.BelowGate : session.AboveGate).Add(hit);
             }
 
-            session.Pending = null;
+            session.HasGameResult = session.AboveGate.Exists(hit => hit is EntityCardResult);
+            session.LowRelevanceOpen = false;
+            session.MoreOpen = false;
+            session.WikiOpen = true;
+            session.ExpandedRows.Clear();
+            session.ExpandedChains.Clear();
+            session.ExpandedScenes.Clear();
+            // Grouping cutscene appearances here keeps the per-frame scene
+            // tab from re-running GroupBy on every draw.
+            session.SceneGroups.Clear();
+            foreach (var hit in session.Response.Results)
+            {
+                if (hit is EntityCardResult { CutsceneAppearances.Count: > 0 } sceneCard)
+                    session.SceneGroups[RowKey(sceneCard)] = sceneCard.CutsceneAppearances
+                        .GroupBy(a => (a.ExpansionOrder, a.Expansion))
+                        .Select(g => new SceneGroup(g.Key.ExpansionOrder, g.Key.Expansion, g.ToList()))
+                        .ToList();
+            }
+
+            if (session.AboveGate.Count > 0 && session.AboveGate[0] is EntityCardResult top && HasDetail(top))
+                session.ExpandedRows.Add(RowKey(top));
         }
+        else if (!session.Pending.IsCanceled)
+        {
+            var failure = session.Pending.Exception?.GetBaseException();
+            Plugin.Log.Error(failure, "Search failed.");
+            session.Error = failure?.Message ?? "something went wrong";
+        }
+
+        session.Pending = null;
     }
 
-    private void RunQuery(SearchSession session, SearchCategory category)
+    private void RunQuery(bool remember = true)
     {
         var query = session.QueryInput.Trim();
         if (query.Length == 0)
             return;
 
+        if (remember && session.Submitted is { } previous && previous != query)
+        {
+            history.Add(previous);
+            if (history.Count > MaxHistory)
+                history.RemoveAt(0);
+        }
+
+        session.Submitted = query;
         session.Cts?.Cancel();
         session.Cts?.Dispose();
         session.Cts = new CancellationTokenSource();
@@ -541,11 +492,10 @@ public partial class MainWindow : Window, IDisposable
 
         session.Response = null;
         session.Error = null;
-        session.PendingScroll = 0f;
-        session.PendingScrollFrames = 2;
+        session.ScrollToTop = true;
         // The pipeline runs off-thread, so the progress snapshot it filters
         // against must be captured here, still on the main thread.
         plugin.QuestProgress.Refresh();
-        session.Pending = Task.Run(() => plugin.Pipeline.ExecuteAsync(query, category, ct), ct);
+        session.Pending = Task.Run(() => plugin.Pipeline.ExecuteAsync(query, ct), ct);
     }
 }

@@ -12,7 +12,7 @@ public class ResultRankerTests
 
     private static NormalizedQuery Query(
         QueryIntent intent = QueryIntent.Unknown,
-        SearchCategory category = SearchCategory.Other) =>
+        SearchCategory category = SearchCategory.All) =>
         new("raw", "term", intent, category);
 
     [Fact]
@@ -50,67 +50,33 @@ public class ResultRankerTests
     }
 
     [Fact]
-    public void ExplicitCategoryPrefersMatchingEntity()
-    {
-        var local = new ProviderResult("local",
-            [Card(Npc(), 0.8), Card(Item(), 0.8)], ProviderStatus.Ok);
-
-        var merged = ranker.Merge(Query(category: SearchCategory.Items), [local]);
-
-        var first = Assert.IsType<EntityCardResult>(merged[0]);
-        Assert.IsType<ItemEntity>(first.Entity);
-    }
-
-    [Fact]
-    public void GatheringCategoryPrefersItems()
-    {
-        var local = new ProviderResult("local",
-            [Card(Npc(), 0.8), Card(Item(), 0.8)], ProviderStatus.Ok);
-
-        var merged = ranker.Merge(Query(category: SearchCategory.Gathering), [local]);
-
-        var first = Assert.IsType<EntityCardResult>(merged[0]);
-        Assert.IsType<ItemEntity>(first.Entity);
-    }
-
-    [Fact]
-    public void ExplicitCategoryBeatsInferredIntent()
-    {
-        var local = new ProviderResult("local",
-            [Card(Npc(), 0.8), Card(Item(), 0.8)], ProviderStatus.Ok);
-
-        var merged = ranker.Merge(Query(QueryIntent.Location, SearchCategory.Items), [local]);
-
-        var first = Assert.IsType<EntityCardResult>(merged[0]);
-        Assert.IsType<ItemEntity>(first.Entity);
-    }
-
-    [Fact]
-    public void UnlocksCategoryPrefersQuests()
+    public void UnlockIntentPrefersQuests()
     {
         var local = new ProviderResult("local",
             [Card(Npc(), 0.8), Card(Quest(), 0.8)], ProviderStatus.Ok);
 
-        var merged = ranker.Merge(Query(category: SearchCategory.Unlocks), [local]);
+        var merged = ranker.Merge(Query(QueryIntent.Unlock), [local]);
 
         var first = Assert.IsType<EntityCardResult>(merged[0]);
         Assert.IsType<QuestEntity>(first.Entity);
     }
 
+    // "how do i unlock the gold saucer" without a prefix: an NPC named
+    // "Gold Saucer" ties the duty card on name score.
     [Fact]
-    public void UnlocksCategoryPrefersOptionalDuties()
+    public void UnlockIntentPrefersDutiesOverNpcs()
     {
         var local = new ProviderResult("local",
-            [Card(Npc(), 0.8), Card(Duty(optional: true), 0.8)], ProviderStatus.Ok);
+            [Card(Npc(), 1.0), Card(Duty(), 1.0)], ProviderStatus.Ok);
 
-        var merged = ranker.Merge(Query(category: SearchCategory.Unlocks), [local]);
+        var merged = ranker.Merge(Query(QueryIntent.Unlock), [local]);
 
         var first = Assert.IsType<EntityCardResult>(merged[0]);
         Assert.IsType<DutyEntity>(first.Entity);
     }
 
-    // Ties break quest-first in the merged tab: the quest is the actionable
-    // unlock path, and the duty card links to it anyway.
+    // Ties break quest-first: the quest is the actionable unlock path, and
+    // the duty card links to it anyway.
     [Fact]
     public void UnlockIntentBreaksTiesQuestFirst()
     {

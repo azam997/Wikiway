@@ -48,23 +48,23 @@ public partial class MainWindow
         DrawCountStrip(result);
         ImGui.Spacing();
 
-        var shown = Math.Min(InitialRows, Active.AboveGate.Count);
+        var shown = Math.Min(InitialRows, session.AboveGate.Count);
         for (var i = 0; i < shown; i++)
         {
             if (i > 0)
                 RowDivider();
             ImGui.PushID(i);
-            DrawRow(Active.AboveGate[i], topRow: i == 0);
+            DrawRow(session.AboveGate[i], topRow: i == 0);
             ImGui.PopID();
         }
 
-        if (Active.AboveGate.Count > InitialRows)
+        if (session.AboveGate.Count > InitialRows)
             DrawMoreStrip();
 
-        if (Active.Wiki.Count > 0)
+        if (session.Wiki.Count > 0)
             DrawWikiStrip();
 
-        if (Active.BelowGate.Count > 0)
+        if (session.BelowGate.Count > 0)
             DrawLowRelevanceStrip();
 
         DrawProviderFooter(result);
@@ -130,7 +130,7 @@ public partial class MainWindow
         ImGui.BeginGroup();
         headerRight = RowRightEdge();
         var known = DrawRowContent(hit);
-        if (hit is EntityCardResult detailCard && HasDetail(detailCard) && Active.ExpandedRows.Contains(RowKey(detailCard)))
+        if (hit is EntityCardResult detailCard && HasDetail(detailCard) && session.ExpandedRows.Contains(RowKey(detailCard)))
             DrawCardDetail(detailCard);
         ImGui.EndGroup();
 
@@ -151,7 +151,7 @@ public partial class MainWindow
         if (hovered && hit is EntityCardResult toggleCard && HasDetail(toggleCard))
         {
             var key = RowKey(toggleCard);
-            var zoneMax = Active.ExpandedRows.Contains(key)
+            var zoneMax = session.ExpandedRows.Contains(key)
                 ? new Vector2(contentRight, headerMax.Y + (Theme.Space2 * scale))
                 : rowMax;
             if (ImGui.IsMouseHoveringRect(rowMin, zoneMax))
@@ -159,8 +159,8 @@ public partial class MainWindow
                 ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
                 if (!ImGui.IsAnyItemHovered() && !ImGui.IsAnyItemActive() &&
                     ImGui.IsMouseClicked(ImGuiMouseButton.Left) &&
-                    !Active.ExpandedRows.Remove(key))
-                    Active.ExpandedRows.Add(key);
+                    !session.ExpandedRows.Remove(key))
+                    session.ExpandedRows.Add(key);
             }
         }
 
@@ -260,7 +260,7 @@ public partial class MainWindow
 
         // Expanded cards show the same list inside the Locations tab instead,
         // so the row draws it only while collapsed.
-        if (ShowNpcTabs(card) && Active.ExpandedRows.Contains(RowKey(card)))
+        if (ShowNpcTabs(card) && session.ExpandedRows.Contains(RowKey(card)))
             return;
 
         DrawNpcLocations(npc.RowId, locations, card.MergedHidden);
@@ -399,7 +399,7 @@ public partial class MainWindow
 
         // The expanded card shows the full chain, so the one-line summary
         // only appears while collapsed.
-        var chainShown = plugin.Configuration.ShowUnlockRequirements && Active.ExpandedRows.Contains(RowKey(card));
+        var chainShown = plugin.Configuration.ShowUnlockRequirements && session.ExpandedRows.Contains(RowKey(card));
         if (quest.Prerequisites.Count > 0 && !chainShown && !msqHidden)
         {
             var joiner = quest.PrerequisiteJoin == QuestJoin.Any ? " or " : ", ";
@@ -490,7 +490,7 @@ public partial class MainWindow
 
         // The expanded detail shows the full text, so the ellipsized line
         // only appears while collapsed.
-        if (description.Length > 0 && !Active.ExpandedRows.Contains(RowKey(card)))
+        if (description.Length > 0 && !session.ExpandedRows.Contains(RowKey(card)))
         {
             plugin.Fonts.Body13.Push();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
@@ -580,7 +580,7 @@ public partial class MainWindow
 
         // The expanded detail shows the full hint, so the ellipsized line only
         // appears while collapsed.
-        if (vista.Hint.Length > 0 && !Active.ExpandedRows.Contains(RowKey(card)))
+        if (vista.Hint.Length > 0 && !session.ExpandedRows.Contains(RowKey(card)))
         {
             fonts.Body13.Push();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
@@ -704,7 +704,7 @@ public partial class MainWindow
 
         // The expanded detail shows the full brief, so the ellipsized line
         // only appears while collapsed.
-        if (leve.Description.Length > 0 && !Active.ExpandedRows.Contains(RowKey(card)))
+        if (leve.Description.Length > 0 && !session.ExpandedRows.Contains(RowKey(card)))
         {
             fonts.Body13.Push();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
@@ -756,7 +756,7 @@ public partial class MainWindow
             var section = sections[i];
             // A game-data card already answers the query, so wiki sections
             // stay folded behind their headings when one is present.
-            var flags = i == 0 && !Active.HasGameResult ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
+            var flags = i == 0 && !session.HasGameResult ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
 
             fonts.Body13.Push();
             ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
@@ -808,17 +808,17 @@ public partial class MainWindow
 
     private void DrawMoreStrip()
     {
-        var hidden = Active.AboveGate.Count - InitialRows;
-        if (ToggleStrip("##wikiway-more", $"{hidden} MORE RESULTS", Active.MoreOpen))
-            Active.MoreOpen = !Active.MoreOpen;
+        var hidden = session.AboveGate.Count - InitialRows;
+        if (ToggleStrip("##wikiway-more", $"{hidden} MORE RESULTS", session.MoreOpen))
+            session.MoreOpen = !session.MoreOpen;
 
-        if (Active.MoreOpen)
+        if (session.MoreOpen)
         {
-            for (var i = InitialRows; i < Active.AboveGate.Count; i++)
+            for (var i = InitialRows; i < session.AboveGate.Count; i++)
             {
                 RowDivider();
                 ImGui.PushID(i);
-                DrawRow(Active.AboveGate[i], topRow: false);
+                DrawRow(session.AboveGate[i], topRow: false);
                 ImGui.PopID();
             }
         }
@@ -826,17 +826,17 @@ public partial class MainWindow
 
     private void DrawWikiStrip()
     {
-        if (ToggleStrip("##wikiway-wiki", $"{Active.Wiki.Count} WIKI RESULTS", Active.WikiOpen))
-            Active.WikiOpen = !Active.WikiOpen;
+        if (ToggleStrip("##wikiway-wiki", $"{session.Wiki.Count} WIKI RESULTS", session.WikiOpen))
+            session.WikiOpen = !session.WikiOpen;
 
-        if (Active.WikiOpen)
+        if (session.WikiOpen)
         {
-            for (var i = 0; i < Active.Wiki.Count; i++)
+            for (var i = 0; i < session.Wiki.Count; i++)
             {
                 RowDivider();
                 // Offset past both gate lists so the three lists never collide.
                 ImGui.PushID(2000 + i);
-                DrawRow(Active.Wiki[i], topRow: false);
+                DrawRow(session.Wiki[i], topRow: false);
                 ImGui.PopID();
             }
         }
@@ -844,18 +844,18 @@ public partial class MainWindow
 
     private void DrawLowRelevanceStrip()
     {
-        if (ToggleStrip("##wikiway-lowrelevance", $"{Active.BelowGate.Count} LOW CONFIDENCE RESULTS",
-                Active.LowRelevanceOpen))
-            Active.LowRelevanceOpen = !Active.LowRelevanceOpen;
+        if (ToggleStrip("##wikiway-lowrelevance", $"{session.BelowGate.Count} LOW CONFIDENCE RESULTS",
+                session.LowRelevanceOpen))
+            session.LowRelevanceOpen = !session.LowRelevanceOpen;
 
-        if (Active.LowRelevanceOpen)
+        if (session.LowRelevanceOpen)
         {
-            for (var i = 0; i < Active.BelowGate.Count; i++)
+            for (var i = 0; i < session.BelowGate.Count; i++)
             {
                 RowDivider();
                 // Offset past the above-gate IDs so the two lists never collide.
                 ImGui.PushID(1000 + i);
-                DrawRow(Active.BelowGate[i], topRow: false);
+                DrawRow(session.BelowGate[i], topRow: false);
                 ImGui.PopID();
             }
         }
@@ -894,7 +894,7 @@ public partial class MainWindow
             ImGui.SameLine(0, Theme.Space3 * scale);
             ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
             if (Widgets.OutlinedButton($"Retry##retry{provider.ProviderId}"))
-                RunQuery(Active, Categories[categoryIndex].Value);
+                RunQuery();
             ImGui.PopStyleVar();
             fonts.Citation12.Pop();
         }
@@ -1014,10 +1014,10 @@ public partial class MainWindow
             return;
 
         var key = RowKey(card);
-        var open = Active.ExpandedRows.Contains(key);
+        var open = session.ExpandedRows.Contains(key);
         var caret = (open ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight).ToIconString();
-        if (HeaderAction(caret, $"expand{key}") && !Active.ExpandedRows.Remove(key))
-            Active.ExpandedRows.Add(key);
+        if (HeaderAction(caret, $"expand{key}") && !session.ExpandedRows.Remove(key))
+            session.ExpandedRows.Add(key);
     }
 
     private void DrawCardDetail(EntityCardResult card)
@@ -1974,21 +1974,21 @@ public partial class MainWindow
         var fonts = plugin.Fonts;
         var viewWidth = FlagButtonWidth("View");
 
-        if (!Active.SceneGroups.TryGetValue(RowKey(card), out var groups))
+        if (!session.SceneGroups.TryGetValue(RowKey(card), out var groups))
             return;
 
         foreach (var group in groups)
         {
             var key = $"{npc.RowId}:{group.Order}";
-            var open = Active.ExpandedScenes.Contains(key);
+            var open = session.ExpandedScenes.Contains(key);
             var caret = (open ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight).ToIconString();
             var count = group.Scenes.Count;
             var summary = count == 1 ? "1 appearance" : $"{count} appearances";
 
             fonts.Body13.Push();
             if (Widgets.GhostButton($"{caret} {group.Expansion} — {summary}##scenes{key}") &&
-                !Active.ExpandedScenes.Remove(key))
-                Active.ExpandedScenes.Add(key);
+                !session.ExpandedScenes.Remove(key))
+                session.ExpandedScenes.Add(key);
             fonts.Body13.Pop();
 
             if (!open)
@@ -2055,7 +2055,7 @@ public partial class MainWindow
         var progress = plugin.QuestProgress;
 
         var key = (quest.RowId, index);
-        var open = Active.ExpandedChains.Contains(key);
+        var open = session.ExpandedChains.Contains(key);
         var caret = (open ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight).ToIconString();
         var label = chain.Genre.Length > 0 ? chain.Genre : "Quest chain";
         var count = chain.Steps.Count == 1 ? "1 quest" : $"{chain.Steps.Count} quests";
@@ -2068,8 +2068,8 @@ public partial class MainWindow
             summary += " (either)";
 
         fonts.Body13.Push();
-        if (Widgets.GhostButton($"{summary}##chaintoggle{quest.RowId}-{index}") && !Active.ExpandedChains.Remove(key))
-            Active.ExpandedChains.Add(key);
+        if (Widgets.GhostButton($"{summary}##chaintoggle{quest.RowId}-{index}") && !session.ExpandedChains.Remove(key))
+            session.ExpandedChains.Add(key);
         fonts.Body13.Pop();
 
         if (!open)
