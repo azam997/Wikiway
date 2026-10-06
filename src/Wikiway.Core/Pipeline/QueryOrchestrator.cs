@@ -4,6 +4,9 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Core.Pipeline;
 
+// Runs one search: normalize the text, query every provider in parallel (each
+// under its own timeout), rank the combined results, then fold matching wiki
+// sections into game-data cards. Runs on the thread pool.
 public sealed class QueryOrchestrator : IQueryPipeline
 {
     private readonly IReadOnlyList<ISearchProvider> providers;
@@ -28,9 +31,12 @@ public sealed class QueryOrchestrator : IQueryPipeline
         var watch = Stopwatch.StartNew();
         var query = normalizer.Normalize(rawQuery);
 
+        // Each provider gets its own pool task. Called directly, the local
+        // provider's await on its finished index completes synchronously, so
+        // its whole search would run before the wiki request even started.
         var searches = providers
             .Select(p => p.IsAvailable
-                ? RunProviderAsync(p, query, ct)
+                ? Task.Run(() => RunProviderAsync(p, query, ct))
                 : Task.FromResult(ProviderResult.Skip(p.Id)))
             .ToList();
 
@@ -41,6 +47,8 @@ public sealed class QueryOrchestrator : IQueryPipeline
         return new QueryResponse(query, results, detail, watch.Elapsed);
     }
 
+    // A provider that times out or throws becomes a Failure entry instead of
+    // failing the query; only the caller's own cancellation propagates.
     private async Task<ProviderResult> RunProviderAsync(
         ISearchProvider provider, NormalizedQuery query, CancellationToken ct)
     {

@@ -5,6 +5,9 @@ using Wikiway.Core.Abstractions;
 
 namespace Wikiway.Core.Caching;
 
+// On-disk cache for wiki API responses, under the plugin's config directory.
+// One JSON file per URL, named by its SHA-256 hash. Every failure is logged and
+// treated as a miss; a broken cache never breaks a search.
 public sealed class FileCacheStore : ICacheStore
 {
     private readonly string directory;

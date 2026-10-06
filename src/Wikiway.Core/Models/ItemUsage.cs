@@ -1,5 +1,7 @@
 namespace Wikiway.Core.Models;
 
+// What an item is used for. MateriaTag is "Critical Hit +12" style text, empty
+// for non-materia.
 public sealed record ItemUsage(
     int UsedInRecipes,
     IReadOnlyList<DeliverySource> Deliveries,

@@ -1,5 +1,7 @@
 namespace Wikiway.Core.Models;
 
+// Gear stats for the EQUIPMENT block. HQ bonuses are stored as deltas over the
+// NQ values, as the sheets keep them.
 public sealed record ItemEquipment(
     string Slot,
     ushort ItemLevel,

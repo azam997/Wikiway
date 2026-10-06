@@ -2,15 +2,21 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Core.Pipeline;
 
+// Expands a quest's prerequisites into the chains shown under UNLOCK
+// REQUIREMENTS. Called by the store for each quest card, with resolve looking
+// up quests by row id.
 public static class QuestChainWalker
 {
+    // Step budget shared by all chains of one quest; a chain cut short says it
+    // continues.
     public const int MaxSteps = 20;
 
     // Walks every prerequisite branch into its own chain, steps in play order
     // (first pick-up-able quest first). A fork ends the current chain and
     // spawns one chain per branch, appended before their spawner so the list
     // reads in play order. Main-scenario quests become chain-level gates and
-    // are never descended (user decision: MSQ shows a patch, not a chain).
+    // are never followed further: by design, a main-scenario prerequisite shows
+    // as its patch number, not as a chain.
     public static (IReadOnlyList<QuestChain> Chains, string? MsqVersion) Walk(
         QuestEntity origin, Func<uint, QuestEntity?> resolve, int maxSteps = MaxSteps)
     {

@@ -1,5 +1,7 @@
 namespace Wikiway.Core.Models;
 
+// Every way the game data says an item can be obtained, one list per source
+// type.
 public sealed record ItemAcquisition(
     IReadOnlyList<RecipeSource> Recipes,
     IReadOnlyList<VendorSource> Vendors,

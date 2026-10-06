@@ -4,6 +4,8 @@ using Dalamud.Interface.Utility;
 
 namespace Wikiway.Plugin.Ui;
 
+// The fixed font sizes the UI uses, each with FontAwesome glyphs merged in for
+// icons.
 internal sealed class Fonts : IDisposable
 {
     public IFontHandle Tag10 { get; }

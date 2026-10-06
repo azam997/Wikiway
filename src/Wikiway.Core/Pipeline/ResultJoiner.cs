@@ -4,17 +4,20 @@ using Wikiway.Core.Wiki;
 
 namespace Wikiway.Core.Pipeline;
 
+// Folds wiki section results into the game-data card for the same subject, so
+// one thing gets one row.
 public static class ResultJoiner
 {
     // A wiki sections result titled like an entity card is the same subject;
     // folding it into the card keeps one row per thing. Exact titles win, then
     // leading-article mismatches ("The Bozjan Southern Front" wiki page vs the
     // "Bozjan Southern Front" card) join only while unambiguous on both sides.
-    // Provider counts are adjusted so the count strip still matches the rows drawn.
-    // Only cards the headings were picked for can join (SectionExtractor.Fits),
-    // so the Gold Saucer page's sections never land on an NPC named Gold
-    // Saucer. A bare name's sections were fetched on spec; any that find no
-    // card are dropped rather than shown on their own.
+    // Provider counts are adjusted so the count strip still matches the rows
+    // drawn. Only cards the headings were picked for can join
+    // (SectionExtractor.Fits), so the Gold Saucer page's sections never land on
+    // an NPC named Gold Saucer. For a bare name the sections were fetched as a
+    // guess, so any that find no card are dropped rather than shown on their
+    // own.
     public static (IReadOnlyList<SearchResult> Results, IReadOnlyList<ProviderResult> ProviderDetail) AttachWikiSections(
         IReadOnlyList<SearchResult> results, IReadOnlyList<ProviderResult> providerDetail, QueryIntent intent)
     {
@@ -79,6 +82,7 @@ public static class ResultJoiner
         return (output, detail);
     }
 
+    // Second pass for titles that differ only by a leading "The"/"A"/"An".
     private static void JoinArticleStripped(
         Dictionary<string, WikiSectionsResult> sectionsByTitle,
         HashSet<string> cardTitles,

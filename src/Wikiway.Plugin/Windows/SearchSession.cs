@@ -6,6 +6,9 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Plugin.Windows;
 
+// State of the main window's current search: the input text, the pending task,
+// the response split into its display lists, and which rows and blocks the user
+// has expanded. Reset on each new result (see MainWindow.Harvest).
 internal sealed class SearchSession : IDisposable
 {
     public string QueryInput = string.Empty;

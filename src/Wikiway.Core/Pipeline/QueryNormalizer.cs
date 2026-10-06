@@ -3,6 +3,10 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Core.Pipeline;
 
+// Turns raw search text into a NormalizedQuery. An optional "prefix:" picks a
+// category filter, a leading phrase ("where is", "how do I get") sets the
+// intent and is removed, then punctuation and a leading article are stripped.
+// What's left is the term matched against names.
 public sealed class QueryNormalizer
 {
     // Longest phrases first so "how do i unlock" wins over "how do i".
@@ -107,6 +111,8 @@ public sealed class QueryNormalizer
         return new NormalizedQuery(raw, lowered, intent, category);
     }
 
+    // Text before a colon counts as a prefix only when it's in the table, so a
+    // name with a colon in it searches as typed.
     private static (string Text, SearchCategory Category) SplitPrefix(string raw)
     {
         var colon = raw.IndexOf(':');
@@ -139,6 +145,8 @@ public sealed class QueryNormalizer
         return text;
     }
 
+    // Drops ?!.," and folds the curly apostrophe into ' (names like "Y'shtola"
+    // use the straight one).
     private static string StripPunctuation(string text)
     {
         var sb = new StringBuilder(text.Length);

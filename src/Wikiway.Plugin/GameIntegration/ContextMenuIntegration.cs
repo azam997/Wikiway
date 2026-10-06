@@ -10,6 +10,10 @@ using Wikiway.Plugin.Windows;
 
 namespace Wikiway.Plugin.GameIntegration;
 
+// Adds "Look up on Wikiway" to the game's right-click menus: items (inventory,
+// chat links, crafting and gathering logs, timers, custom deliveries), event
+// NPCs and enemies. Menus open on the game thread, so only cheap single-row
+// name reads happen here; the search itself runs later, off-thread.
 internal sealed class ContextMenuIntegration : IDisposable
 {
     // Item ids read from game UI state have item flags folded in: collectables
@@ -99,6 +103,8 @@ internal sealed class ContextMenuIntegration : IDisposable
         _ => (uint)raw,
     };
 
+    // The click fills the search box with a prefixed query ("item: Iron
+    // Ingot"), so the user can see what was searched.
     private void AddLookup(IMenuOpenedArgs args, string? name, SearchCategory category)
     {
         if (string.IsNullOrEmpty(name))

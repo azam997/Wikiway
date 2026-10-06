@@ -21,8 +21,14 @@ using Wikiway.Plugin.Windows;
 
 namespace Wikiway.Plugin;
 
+// Entry point Dalamud loads. The constructor builds every service once: config,
+// fonts, the wiki HTTP stack, the game-data store, the search pipeline, the
+// windows and the game hooks. Dispose takes them down in reverse. This is the
+// only project that references Dalamud; Core and GameData stay plain .NET.
 public sealed class Plugin : IDalamudPlugin
 {
+    // Dalamud services, injected into these statics before the constructor
+    // runs; the rest of the plugin reaches them as Plugin.X.
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
@@ -70,6 +76,10 @@ public sealed class Plugin : IDalamudPlugin
                 Path.Combine(PluginInterface.GetPluginConfigDirectory(), "cache"),
                 message => Log.Warning("{Message}", message));
             CacheStore = fileCache;
+            // One HttpClient for all wiki traffic. Handlers run outside-in: the
+            // disk cache (a hit never reaches the network), then the throttle
+            // (one request per second, retries on 429/502/503), then the socket
+            // handler.
             httpClient = new HttpClient(new CachingHandler(CacheStore)
             {
                 InnerHandler = new ThrottlingHandler
@@ -85,15 +95,17 @@ public sealed class Plugin : IDalamudPlugin
             QuestProgress = new QuestProgressTracker();
             Teleport = new TeleportService();
 
-            // Spoiler gating fails OPEN while logged out or before the first
-            // progress snapshot - a lookup tool that hides data it can't verify
-            // would be wrong more often than it protects.
+            // Spoiler hiding is off (fails open) while logged out or before the
+            // first progress snapshot: a lookup tool that hides data it can't
+            // verify would be wrong more often than it protects.
             localProvider = new LocalGameDataProvider(
                 gameDataStore,
                 id => !Configuration.SpoilerProtectionEnabled
                     || !QuestProgress.IsAvailable
                     || QuestProgress.IsComplete(id),
                 shutdownCts.Token);
+            // The search pipeline: game data and the wiki, both queried for
+            // every search (the wiki only while enabled in settings).
             Pipeline = new QueryOrchestrator(
                 [
                     localProvider,
@@ -151,7 +163,7 @@ public sealed class Plugin : IDalamudPlugin
             // Dalamud never calls Dispose on a constructor that threw. Its
             // scoped services take back the commands, events and font atlas,
             // but the index build and warm-up would keep walking sheets and
-            // pin this assembly until the game exits.
+            // keep this assembly loaded until the game exits.
             shutdownCts.Cancel();
             httpClient?.Dispose();
             Fonts?.Dispose();
@@ -159,6 +171,9 @@ public sealed class Plugin : IDalamudPlugin
         }
     }
 
+    // Stop new work first (cancel, unhook UI, commands and game hooks, close
+    // windows), give background tasks up to two seconds to notice, then free
+    // the HTTP stack and fonts.
     public void Dispose()
     {
         shutdownCts.Cancel();
@@ -177,8 +192,8 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.Dispose();
 
         // In-flight searches and the index build still hold the HttpClient and
-        // this assembly; give them a moment to observe cancellation before
-        // both go away with the ALC.
+        // this assembly; give them a moment to notice the cancellation before
+        // both are unloaded with the plugin's AssemblyLoadContext.
         Task[] background = mainWindow.PendingSearch is { } search
             ? [warmupTask, localProvider.IndexTask, search]
             : [warmupTask, localProvider.IndexTask];
@@ -188,7 +203,7 @@ public sealed class Plugin : IDalamudPlugin
         }
         catch
         {
-            // Cancelled or faulted is fine - quiescence is all that matters.
+            // Cancelled or faulted is fine; they only need to have stopped.
         }
 
         httpClient.Dispose();
@@ -239,6 +254,7 @@ public sealed class Plugin : IDalamudPlugin
     public void ToggleConfigUi() => configWindow.Toggle();
     public void ShowTutorial() => tutorialWindow.Restart();
 
+    // /wikiway <text> runs that search; /wikiway alone just opens the window.
     private void OnCommand(string command, string args)
     {
         var query = args.Trim();

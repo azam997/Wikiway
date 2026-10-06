@@ -3,8 +3,13 @@ using Wikiway.Core.Pipeline;
 
 namespace Wikiway.Core.Matching;
 
+// A name hit and how close it was: 1.0 exact, 0.85 prefix, 0.7 substring,
+// 0.5-0.55 for typo matches.
 public sealed record NameMatch(NameIndexEntry Entry, double Score);
 
+// In-memory search over every game name (~75k), built once at startup. Tiers
+// run from exact to typo-tolerant and later tiers only run when earlier ones
+// found too little, so a precise query stays cheap.
 public sealed class FuzzyNameIndex
 {
     private const int TypoLimit = 8;
@@ -34,6 +39,8 @@ public sealed class FuzzyNameIndex
 
     public int Count => entries.Count;
 
+    // kinds restricts results to those entity kinds (from a query prefix); null
+    // searches everything. Ties break toward the shortest name.
     public IReadOnlyList<NameMatch> Search(string term, int limit = 8, IReadOnlyList<EntityKind>? kinds = null)
     {
         if (term.Length == 0)
@@ -70,9 +77,9 @@ public sealed class FuzzyNameIndex
             }
         }
 
-        // Typo tier - only worth the scan when nothing better matched, and a
-        // rescue rather than a listing: a garbled term is near thousands of
-        // unrelated short names, so only the closest few are worth showing.
+        // Typo tier: only runs when nothing else matched. A misspelled term is
+        // close to thousands of unrelated short names, so only the closest few
+        // are kept.
         if (matches.Count == 0)
         {
             var candidates = new List<(NameIndexEntry Entry, int Distance)>();

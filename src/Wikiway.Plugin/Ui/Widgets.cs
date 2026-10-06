@@ -6,6 +6,8 @@ using Dalamud.Interface.Utility;
 
 namespace Wikiway.Plugin.Ui;
 
+// Look of a tag pill: filled accent, filled neutral, outlined, or the wiki
+// pink.
 internal enum TagStyle
 {
     Accent,

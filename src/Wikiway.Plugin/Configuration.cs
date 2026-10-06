@@ -3,6 +3,9 @@ using Dalamud.Configuration;
 
 namespace Wikiway.Plugin;
 
+// Saved settings; Dalamud stores them as JSON in the plugin's config folder.
+// Every feature toggle defaults on. ConfigWindow edits these and saves on each
+// change.
 [Serializable]
 public class Configuration : IPluginConfiguration
 {

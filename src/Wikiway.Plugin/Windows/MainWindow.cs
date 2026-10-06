@@ -17,15 +17,22 @@ using Wikiway.Plugin.Ui;
 
 namespace Wikiway.Plugin.Windows;
 
+// The search window. This file holds its lifecycle, the search box and Back
+// history, the active-quest picker, and starting searches and picking up their
+// results (RunQuery, Harvest). Results are drawn by the other MainWindow.*.cs
+// partials: Results (the list), Rows (collapsed rows), *Detail (expanded
+// cards), RowParts and Locations (shared pieces).
 public partial class MainWindow : Window, IDisposable
 {
+    // Results scoring below this go under the LOW CONFIDENCE strip.
     private const double ScoreGate = 0.2;
     private const int StyleColorCount = 21;
     private const int StyleVarCount = 3;
     private const int QueryCapacity = 256;
     private const int MaxHistory = 20;
 
-    // Hint entities are canary-pinned names, so the samples always resolve.
+    // The example names in the hint are covered by canary tests, so they always
+    // return a result.
     private const string InputHint = "where is momodi, item: iron ingot...";
 
     private readonly Plugin plugin;
@@ -34,6 +41,9 @@ public partial class MainWindow : Window, IDisposable
     private readonly List<string> history = [];
 
     private bool focusInput;
+    // A search requested mid-draw (a link or View button). Starting it right
+    // away would replace the result list while it is being iterated, so it runs
+    // at the top of the next frame.
     private (string Query, SearchCategory Category)? queuedNavigation;
     private List<ActiveQuestEntry> activeQuests = [];
     private long activeQuestsRefreshAt;
@@ -49,8 +59,8 @@ public partial class MainWindow : Window, IDisposable
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
 
-        // Spoiler reveals are consent from this character; the next login may
-        // be an alt whose progress differs.
+        // A spoiler reveal only counts for the current character; the next
+        // login may be an alt whose progress differs.
         Plugin.ClientState.Logout += OnLogout;
     }
 
@@ -76,6 +86,7 @@ public partial class MainWindow : Window, IDisposable
 
     public override void OnOpen() => focusInput = true;
 
+    // The window's color theme, pushed around every Draw (popped in PostDraw).
     public override void PreDraw()
     {
         base.PreDraw();
@@ -201,13 +212,13 @@ public partial class MainWindow : Window, IDisposable
         fonts.Small11.Push();
         var pos = ImGui.GetCursorScreenPos();
         ImGui.SetCursorScreenPos(pos with { Y = brandMax.Y - ImGui.GetTextLineHeight() - (3f * scale) });
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral500);
-        ImGui.TextUnformatted("LOCAL GAME DATA + CONSOLEGAMESWIKI");
-        ImGui.PopStyleColor();
+        ColorText("LOCAL GAME DATA + CONSOLEGAMESWIKI", Theme.Neutral500);
         fonts.Small11.Pop();
         ImGui.Spacing();
     }
 
+    // Back button, help marker, the query box with its search glyph, and the
+    // Search button.
     private void DrawSearchInput()
     {
         var scale = ImGuiHelpers.GlobalScale;
@@ -293,6 +304,8 @@ public partial class MainWindow : Window, IDisposable
 
     private bool QuestPickerVisible => plugin.Configuration.ActiveQuestPickerEnabled;
 
+    // Once a search is on screen, the journal list moves into this popup
+    // button.
     private void DrawQuestPicker()
     {
         var scale = ImGuiHelpers.GlobalScale;
@@ -316,11 +329,7 @@ public partial class MainWindow : Window, IDisposable
 
         fonts.Body13.Push();
         if (activeQuests.Count == 0)
-        {
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-            ImGui.TextUnformatted("No active quests.");
-            ImGui.PopStyleColor();
-        }
+            ColorText("No active quests.", Theme.Neutral600);
 
         for (var i = 0; i < activeQuests.Count; i++)
         {
@@ -332,6 +341,7 @@ public partial class MainWindow : Window, IDisposable
         ImGui.EndPopup();
     }
 
+    // One journal quest; tracked quests are starred and listed first.
     private bool QuestSelectable(ActiveQuestEntry quest, string id)
     {
         var label = quest.Level > 0 ? $"{quest.Name}   Lv {quest.Level}" : quest.Name;
@@ -352,21 +362,10 @@ public partial class MainWindow : Window, IDisposable
     {
         Widgets.Spinner();
         ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
-        plugin.Fonts.Body14.Push();
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
-        ImGui.TextUnformatted("Searching…");
-        ImGui.PopStyleColor();
-        plugin.Fonts.Body14.Pop();
+        TextLine("Searching…", plugin.Fonts.Body14, Theme.Neutral400);
     }
 
-    private void DrawErrorState()
-    {
-        plugin.Fonts.Body14.Push();
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent300);
-        ImGui.TextWrapped(session.Error!);
-        ImGui.PopStyleColor();
-        plugin.Fonts.Body14.Pop();
-    }
+    private void DrawErrorState() => TextLine(session.Error!, plugin.Fonts.Body14, Theme.Accent300, wrap: true);
 
     private void DrawIdleState()
     {
@@ -376,11 +375,7 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
-        plugin.Fonts.Body14.Push();
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
-        ImGui.TextUnformatted("Type a question or a name and hit enter.");
-        ImGui.PopStyleColor();
-        plugin.Fonts.Body14.Pop();
+        TextLine("Type a question or a name and hit enter.", plugin.Fonts.Body14, Theme.Neutral400);
     }
 
     // The journal changes rarely, so the idle list re-reads it on a slow tick
@@ -409,11 +404,7 @@ public partial class MainWindow : Window, IDisposable
         fonts.Body13.Pop();
 
         ImGui.Spacing();
-        fonts.Citation12.Push();
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral600);
-        ImGui.TextUnformatted("Click a quest to look it up.");
-        ImGui.PopStyleColor();
-        fonts.Citation12.Pop();
+        TextLine("Click a quest to look it up.", fonts.Citation12, Theme.Neutral600);
     }
 
     // The pipeline runs on the thread pool; the draw loop just polls the task.
@@ -428,9 +419,9 @@ public partial class MainWindow : Window, IDisposable
             session.AboveGate.Clear();
             session.BelowGate.Clear();
             session.Wiki.Clear();
-            // Wiki rows skip the score gate: their scores rank data-page
-            // quality, not relevance, and burying them under "low
-            // confidence" hid the path to the wiki page.
+            // Wiki rows skip the score gate: their scores rank page quality,
+            // not relevance, and putting them under "low confidence" would hide
+            // the link to the wiki page.
             foreach (var hit in session.Response.Results)
             {
                 if (hit is WikiPageResult or WikiSectionsResult)
@@ -471,6 +462,9 @@ public partial class MainWindow : Window, IDisposable
         session.Pending = null;
     }
 
+    // Starts a search on the thread pool, cancelling any search still running.
+    // remember is false when Back re-runs an older query, so history isn't re-
+    // added.
     private void RunQuery(bool remember = true)
     {
         var query = session.QueryInput.Trim();

@@ -22,6 +22,8 @@ internal sealed class TeleportService
     private bool providerLoaded;
     private long lastRefresh = -StaleMs;
 
+    // Both inputs come from the ~2s cache below, so this is cheap enough to
+    // call for every drawn button.
     public bool CanTeleportTo(uint aetheryteId) =>
         providerLoaded && attuned.Contains(aetheryteId);
 

@@ -6,6 +6,10 @@ using Wikiway.Core.Wiki;
 
 namespace Wikiway.Core.Providers;
 
+// Searches ffxiv.consolegameswiki.com. Each hit becomes a page link; for
+// acquisition and unlock questions (and bare names) the top page's relevant
+// sections are fetched too and shown as text. Only the search term is sent.
+// Can be switched off in settings (IsAvailable).
 public sealed class ConsoleGamesWikiProvider : ISearchProvider
 {
     public const string ProviderId = "consolegameswiki";
@@ -74,6 +78,8 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider
         return new ProviderResult(Id, results, ProviderStatus.Ok);
     }
 
+    // Fetches the section list, picks up to three matching headings
+    // (SectionExtractor), then fetches and cleans each section.
     private async Task<WikiSectionsResult?> TryFetchSectionsAsync(
         QueryIntent intent, WikiPageResult page, CancellationToken ct)
     {
@@ -110,8 +116,8 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider
         }
         catch (HttpRequestException)
         {
-            // Sections are enrichment on top of the page hit; a wiki hiccup
-            // here shouldn't fail the whole search.
+            // Sections are extra detail on top of the page hit; a failed
+            // section request here shouldn't fail the whole search.
             return null;
         }
         catch (OperationCanceledException)
@@ -126,6 +132,7 @@ public sealed class ConsoleGamesWikiProvider : ISearchProvider
         }
     }
 
+    // Cuts at a word boundary so a long section can't take over the window.
     private static string Truncate(string text, int max)
     {
         if (text.Length <= max)

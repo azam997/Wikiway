@@ -2,6 +2,9 @@ using System.Net;
 
 namespace Wikiway.Core.Wiki;
 
+// HttpClient handler that rate-limits wiki requests: at most one per second
+// across all searches, and up to two retries with backoff when the server says
+// it's busy (429/502/503).
 public sealed class ThrottlingHandler : DelegatingHandler
 {
     private static readonly TimeSpan MaxRetryAfter = TimeSpan.FromSeconds(30);

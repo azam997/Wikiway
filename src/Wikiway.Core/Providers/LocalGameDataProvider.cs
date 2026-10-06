@@ -5,13 +5,16 @@ using Wikiway.Core.Pipeline;
 
 namespace Wikiway.Core.Providers;
 
+// Answers queries from the game's own data: fuzzy-match the term against every
+// name, build an entity card per match, then merge same-named duplicates
+// (EntityGrouper). Needs no network.
 public sealed class LocalGameDataProvider : ISearchProvider
 {
     public const string ProviderId = "local-gamedata";
 
-    // A runaway bound, not a page size: real name families ("cosmic ..." is
-    // ~230 items at 7.x) must come back whole, because the ranker's
-    // shortest-name tie-break otherwise starves the long-named members.
+    // A safety cap, not a page size: real name families ("cosmic ..." is ~230
+    // items at 7.x) must come back whole, because the shortest-name tie-break
+    // would otherwise crowd out the longer names.
     private const int MaxResults = 500;
 
     private static readonly Citation GameDataSource = new("Game data");
@@ -30,7 +33,7 @@ public sealed class LocalGameDataProvider : ISearchProvider
         indexTask = Task.Run(() => new FuzzyNameIndex(store.GetAllNames(lifetime)), lifetime);
     }
 
-    // Lets the plugin wait for the build to quiesce before unloading.
+    // Lets the plugin wait for the build to stop before unloading.
     public Task IndexTask => indexTask;
 
     public string Id => ProviderId;
@@ -74,6 +77,8 @@ public sealed class LocalGameDataProvider : ISearchProvider
         _ => null,
     };
 
+    // Turns an index hit into its full entity; null if the row no longer
+    // resolves.
     private GameEntity? Resolve(NameIndexEntry entry) => entry.Kind switch
     {
         EntityKind.Item or EntityKind.Gatherable => store.GetItem(entry.RowId),

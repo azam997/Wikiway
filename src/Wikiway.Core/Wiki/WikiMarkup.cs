@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 
 namespace Wikiway.Core.Wiki;
 
+// Cleans wikitext that survives HTML stripping (templates, links, bold, refs,
+// inline CSS) so section text reads as plain prose.
 public static partial class WikiMarkup
 {
     private const int MinMeaningful = 30;

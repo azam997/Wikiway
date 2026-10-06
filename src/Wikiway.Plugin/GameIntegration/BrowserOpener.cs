@@ -3,6 +3,7 @@ using System.Diagnostics;
 
 namespace Wikiway.Plugin.GameIntegration;
 
+// Opens a wiki page in the user's default browser.
 internal static class BrowserOpener
 {
     public static void Open(Uri url)

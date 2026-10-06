@@ -8,6 +8,8 @@ namespace Wikiway.Plugin.GameIntegration;
 
 internal readonly record struct ActiveQuestEntry(string Name, ushort Level, bool Tracked);
 
+// Reads the quest journal from game memory for the active-quest list. Read-
+// only, and only ever called on the game main thread.
 internal static unsafe class ActiveQuestReader
 {
     // Called from the draw loop only - UiBuilder.Draw runs on the game main

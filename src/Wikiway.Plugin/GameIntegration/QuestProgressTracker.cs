@@ -6,6 +6,10 @@ using Lumina.Excel.Sheets;
 
 namespace Wikiway.Plugin.GameIntegration;
 
+// Which quests the current character has completed or accepted, read from game
+// memory. Drives spoiler gating and the chain checkmarks. Refreshed on the main
+// thread (every ~2s from the draw loop and before each search); read from any
+// thread through an immutable snapshot.
 internal sealed unsafe class QuestProgressTracker
 {
     private const uint QuestRowBase = 0x10000;
@@ -33,8 +37,9 @@ internal sealed unsafe class QuestProgressTracker
 
         // IsQuestComplete below is a [MemberFunction] native call through a
         // generated pointer with no null guard of its own: if the signature
-        // stops resolving after a game patch, calling it is a jump to address
-        // 0 - an uncatchable client crash. A null snapshot fails gating open.
+        // stops resolving after a game patch, calling it is a jump to address 0
+        // - an uncatchable client crash. With no snapshot, spoiler hiding turns
+        // off (fails open).
         if (QuestManager.Addresses.IsQuestComplete.Value == IntPtr.Zero)
         {
             if (!warnedUnresolved)
@@ -61,13 +66,13 @@ internal sealed unsafe class QuestProgressTracker
             .Select(q => q.RowId)
             .ToList();
 
-        // IsQuestComplete reads the client's completed-quest bitmap, indexed
-        // by the ushort id the game uses everywhere outside exd; the Quest
-        // sheet keys those rows at 0x10000 + id, hence the subtraction.
+        // IsQuestComplete reads the client's completed-quest bitmap, indexed by
+        // the ushort id the game uses everywhere outside the Excel sheets; the
+        // Quest sheet keys those rows at 0x10000 + id, hence the subtraction.
         // questRowIds is pre-filtered to that block, so the cast can't fold a
         // different event type's row onto a quest id. The static is missing
-        // from the ClientStructs XML docs; verified present and working on
-        // this build by reflection over the shipped assembly and in-game.
+        // from the ClientStructs XML docs; verified present and working on this
+        // build by reflection over the shipped assembly and in-game.
         var completed = new HashSet<uint>();
         foreach (var rowId in questRowIds)
         {

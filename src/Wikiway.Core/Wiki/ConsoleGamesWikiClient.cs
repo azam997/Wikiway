@@ -3,12 +3,16 @@ using Wikiway.Core.Abstractions;
 
 namespace Wikiway.Core.Wiki;
 
+// Typed calls to the wiki's MediaWiki API (search, section list, section HTML).
+// Requests go through the caching and throttling handlers set up in Plugin.
 public sealed class ConsoleGamesWikiClient : IWikiApiClient
 {
     public const string Host = "ffxiv.consolegameswiki.com";
     private const string ApiBase = $"https://{Host}/mediawiki/api.php";
-    // Keep the version here in step with <Version> in Wikiway.Plugin.csproj.
-    private const string UserAgent = "Wikiway/1.0 (+https://github.com/azam997/Wikiway)";
+    // Identifies the plugin to the wiki's operators, as MediaWiki asks of API
+    // clients. Keep the major.minor in step with <Version> in
+    // Wikiway.Plugin.csproj; patch bumps don't change it.
+    private const string UserAgent = "Wikiway/1.1 (+https://github.com/azam997/Wikiway)";
 
     private readonly HttpClient http;
 

@@ -2,6 +2,7 @@ using System.Text;
 
 namespace Wikiway.Core.Wiki;
 
+// Strips tags from the small HTML fragments the wiki API returns.
 public static class HtmlText
 {
     // Good enough for wiki snippets and lead sections; not a general HTML parser.

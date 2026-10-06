@@ -18,7 +18,9 @@ Updates show up in the installer's "Available updates" like any other plugin.
 ## Publishing a new build (maintainer)
 
 ```powershell
-.\scripts\publish-testing.ps1 -Version 1.0.0.2
+.\scripts\publish-testing.ps1 -Version <a.b.c.d>
 ```
 
-Bump the version each time or Dalamud will not offer the update.
+Bump the version each time or Dalamud will not offer the update. The script
+commits, pushes and creates (or updates) the GitHub release, so run it from a
+clean tree.

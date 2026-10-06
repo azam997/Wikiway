@@ -1,5 +1,7 @@
 namespace Wikiway.Core.Abstractions;
 
+// The three MediaWiki API calls the wiki provider needs: full-text search, a
+// page's section list, and one section's HTML.
 public interface IWikiApiClient
 {
     Uri PageUrl(string title);

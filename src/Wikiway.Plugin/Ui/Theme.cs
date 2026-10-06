@@ -2,9 +2,9 @@ using System.Numerics;
 
 namespace Wikiway.Plugin.Ui;
 
-// Nocturne token block; hex values are authoritative in the design handoffs.
-// Accent ramp is the original purple; the Highlight steps keep the Flare pink
-// for inline emphasis and the wiki tag.
+// The plugin's color palette. Accent (purple) is used for buttons, tags and
+// links; Highlight (pink) for icons, the map and teleport buttons, and the wiki
+// tag.
 internal static class Theme
 {
     public static readonly Vector4 Bg = FromHex(0x161826);

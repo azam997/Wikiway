@@ -3,6 +3,8 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Plugin.GameIntegration;
 
+// Opens the game map with a flag at a result's location (the "Flag map"
+// button).
 internal static class MapLinkOpener
 {
     // Thread model, stated once for the whole plugin: UiBuilder.Draw runs on

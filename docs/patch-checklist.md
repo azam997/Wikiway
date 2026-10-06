@@ -20,8 +20,11 @@ when a canary run fails.
    are our bug, not the patch's.
 4. **Canaries.** `scripts\run-canaries.ps1`:
    - **GameData failures** mean a sheet or join changed (column renamed,
-     renumbered, or a schema update in Lumina.Excel). Fix
-     `src\Wikiway.GameData\LuminaGameDataStore.cs` to match the new schema.
+     renumbered, or a schema update in Lumina.Excel). The failing test's file
+     names the feature: a failure in `GameDataCanaryTests.Acquisition.cs` is
+     fixed in `src\Wikiway.GameData\LuminaGameDataStore.Acquisition.cs` (or
+     `.AcquisitionIndex.cs`), and so on - the full list is in
+     [how-it-works.md](how-it-works.md#game-data).
    - **WikiLive failures** mean the wiki changed its API or response shape.
      Fix `src\Wikiway.Core\Wiki\ConsoleGamesWikiClient.cs` and update the
      canned fixtures in `tests\Wikiway.Core.Tests\WikiClientTests.cs` to the

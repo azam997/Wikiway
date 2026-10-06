@@ -5,6 +5,8 @@ using Wikiway.Plugin.Windows;
 
 namespace Wikiway.Plugin.GameIntegration;
 
+// Shows a small toast when the player zones into a solo duty (quest battle or
+// Masked Carnivale) offering to look it up. It never opens a window by itself.
 internal sealed class SoloDutyNotifier : IDisposable
 {
     private readonly MainWindow mainWindow;

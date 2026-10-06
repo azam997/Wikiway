@@ -42,6 +42,31 @@ public class QueryOrchestratorTests
         Assert.Equal("no", failed.Error);
     }
 
+    // A provider that does its work synchronously (the local one, once its
+    // index is built) must not hold back the next provider's start.
+    [Fact]
+    public async Task ProvidersStartConcurrently()
+    {
+        using var wikiStarted = new ManualResetEventSlim();
+        var sawWikiStart = false;
+        var orchestrator = Build([
+            new StubProvider("local", _ =>
+            {
+                sawWikiStart = wikiStarted.Wait(TimeSpan.FromSeconds(5));
+                return Task.FromResult(new ProviderResult("local", [], ProviderStatus.Ok));
+            }),
+            new StubProvider("wiki", _ =>
+            {
+                wikiStarted.Set();
+                return Task.FromResult(new ProviderResult("wiki", [], ProviderStatus.Ok));
+            }),
+        ]);
+
+        await orchestrator.ExecuteAsync("momodi", CancellationToken.None);
+
+        Assert.True(sawWikiStart, "the second provider only started after the first finished");
+    }
+
     [Fact]
     public async Task UnavailableProviderIsSkippedNotInvoked()
     {

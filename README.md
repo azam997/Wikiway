@@ -10,6 +10,8 @@ when the game data alone isn't enough. Every result shows where it came from.
 Local results follow your client language; the wiki is English, so wiki results
 work best with English terms.
 
+For a walkthrough of the code, see [docs/how-it-works.md](docs/how-it-works.md).
+
 ## AI assistance
 
 Wikiway was written with AI assistance at the **Copilot** level as defined by
@@ -66,15 +68,8 @@ The canary suite is the early-warning system for things that break under us:
 
 ## After a patch or Dalamud API bump
 
-1. If the build breaks after a Dalamud update: bump the `Dalamud.NET.Sdk`
-   version pin in `src\Wikiway.Plugin\Wikiway.Plugin.csproj` and fix what the
-   compiler reports.
-2. Check the `Lumina.dll` / `Lumina.Excel.dll` file versions in
-   `%AppData%\XIVLauncher\addon\Hooks\dev\` and align the NuGet pins in
-   `src\Wikiway.GameData\Wikiway.GameData.csproj` and
-   `tests\Wikiway.Canary.Tests\Wikiway.Canary.Tests.csproj`.
-3. `scripts\run-tests.ps1`, then `scripts\run-canaries.ps1`.
-4. Load in-game and try a couple of queries.
+Follow [docs/patch-checklist.md](docs/patch-checklist.md): rebuild, align the
+Lumina pins, run both test scripts, then try a few queries in-game.
 
 ## Packaging
 
@@ -88,7 +83,15 @@ The canary suite is the early-warning system for things that break under us:
   standalone against a game install, which is what makes the canaries possible.
 - `src/Wikiway.Plugin` - the only project that touches Dalamud (UI, commands, wiring).
 - `tests/` - unit tests and the canary suite.
-- `docs/` - design notes and internal documentation.
+- `docs/`
+  - [how-it-works.md](docs/how-it-works.md) - a walkthrough of the code for
+    reviewers.
+  - [dalamud-api-usage.md](docs/dalamud-api-usage.md) - every Dalamud API call
+    and game-memory read, with where and why.
+  - [patch-checklist.md](docs/patch-checklist.md) - what to do after a game
+    patch or Dalamud update.
+  - [testing-install.md](docs/testing-install.md) - installing a testing build
+    from the custom repo.
 
 ## License
 

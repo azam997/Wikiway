@@ -1,5 +1,8 @@
 namespace Wikiway.Core.Models;
 
+// What the question asks for, read from leading phrases ("where is", "how do I
+// get", "how to unlock"). It nudges ranking and picks which wiki sections to
+// fetch.
 public enum QueryIntent
 {
     Unknown,

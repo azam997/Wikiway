@@ -1,7 +1,10 @@
 namespace Wikiway.Core.Models;
 
+// Where a result came from, shown on every row.
 public sealed record Citation(string Label, Uri? Url = null);
 
+// A row in the result list. EntityCardResult is game data; the two wiki records
+// are a page link and extracted page sections.
 public abstract record SearchResult
 {
     public required string Title { get; init; }

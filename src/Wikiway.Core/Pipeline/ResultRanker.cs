@@ -3,6 +3,8 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Core.Pipeline;
 
+// Orders the combined provider results. Provider scores are only comparable
+// within a provider, so each result type gets a fixed offset on top.
 public sealed class ResultRanker
 {
     public IReadOnlyList<SearchResult> Merge(NormalizedQuery query, IEnumerable<ProviderResult> providerResults)

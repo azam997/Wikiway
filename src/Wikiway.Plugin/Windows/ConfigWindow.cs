@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,8 @@ using Dalamud.Interface.Windowing;
 
 namespace Wikiway.Plugin.Windows;
 
+// The settings window: one checkbox per Configuration toggle, each saved the
+// moment it changes, plus cache and tutorial buttons.
 public class ConfigWindow : Window
 {
     private readonly Plugin plugin;
@@ -25,12 +28,8 @@ public class ConfigWindow : Window
 
     public override void Draw()
     {
-        var wikiEnabled = config.WikiSearchEnabled;
-        if (ImGui.Checkbox("Search the wiki when local data has no answer", ref wikiEnabled))
-        {
-            config.WikiSearchEnabled = wikiEnabled;
-            config.Save();
-        }
+        Setting("Search the wiki when local data has no answer",
+            config.WikiSearchEnabled, static (c, v) => c.WikiSearchEnabled = v);
 
         var maxResults = config.MaxWikiResults;
         ImGui.SetNextItemWidth(120 * ImGuiHelpers.GlobalScale);
@@ -41,135 +40,59 @@ public class ConfigWindow : Window
         if (ImGui.IsItemDeactivatedAfterEdit())
             config.Save();
 
-        var contextMenu = config.ContextMenuEnabled;
-        if (ImGui.Checkbox("Add \"Look up on Wikiway\" to right-click menus", ref contextMenu))
-        {
-            config.ContextMenuEnabled = contextMenu;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Add \"Look up on Wikiway\" to right-click menus",
+            config.ContextMenuEnabled, static (c, v) => c.ContextMenuEnabled = v,
             "Appears when right-clicking items, NPCs and enemies. Items work from your inventory, " +
             "chat links, the crafting and gathering logs, the timers window and custom deliveries.");
 
-        var soloToast = config.SoloDutyToastEnabled;
-        if (ImGui.Checkbox("Offer a duty guide when entering a solo duty", ref soloToast))
-        {
-            config.SoloDutyToastEnabled = soloToast;
-            config.Save();
-        }
+        Setting("Offer a duty guide when entering a solo duty",
+            config.SoloDutyToastEnabled, static (c, v) => c.SoloDutyToastEnabled = v,
+            "A small notification appears bottom-right; click it to open the guide.");
 
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker("A small notification appears bottom-right; click it to open the guide.");
-
-        var unlocks = config.ShowUnlockRequirements;
-        if (ImGui.Checkbox("Show unlock requirements on quest and duty cards", ref unlocks))
-        {
-            config.ShowUnlockRequirements = unlocks;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Show unlock requirements on quest and duty cards",
+            config.ShowUnlockRequirements, static (c, v) => c.ShowUnlockRequirements = v,
             "Adds an Unlock Requirements section listing each quest chain. " +
             "Clicking a step looks that quest up, and completed " +
             "steps get checkmarks while you are logged in.");
 
-        var equipStats = config.ShowEquipmentStats;
-        if (ImGui.Checkbox("Show equipment stats on item cards", ref equipStats))
-        {
-            config.ShowEquipmentStats = equipStats;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Show equipment stats on item cards",
+            config.ShowEquipmentStats, static (c, v) => c.ShowEquipmentStats = v,
             "Equippable items get an Equipment section and food or medicine a Consumable " +
             "section on the expanded card. Ex: item level, stats, buff duration - read from the game files.");
 
-        var itemUsage = config.ShowItemUsage;
-        if (ImGui.Checkbox("Show usage on item cards", ref itemUsage))
-        {
-            config.ShowItemUsage = itemUsage;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Show usage on item cards",
+            config.ShowItemUsage, static (c, v) => c.ShowItemUsage = v,
             "Items used somewhere get a Usage section on their expanded card. " +
             "Ex: recipes, custom deliveries, collectable turn-ins, treasure map sites, materia stats.");
 
-        var cutscenes = config.ShowCutsceneAppearances;
-        if (ImGui.Checkbox("Show cutscene appearances on NPC cards", ref cutscenes))
-        {
-            config.ShowCutsceneAppearances = cutscenes;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Show cutscene appearances on NPC cards",
+            config.ShowCutsceneAppearances, static (c, v) => c.ShowCutsceneAppearances = v,
             "Adds a Cutscene Appearances tab on expanded NPC cards, grouped by expansion, " +
             "hidden if the user has not progressed past that point in MSQ.");
 
-        var pinCap = config.CapNpcLocationPins;
-        if (ImGui.Checkbox("Cap location lists on NPC results", ref pinCap))
-        {
-            config.CapNpcLocationPins = pinCap;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Cap location lists on NPC results",
+            config.CapNpcLocationPins, static (c, v) => c.CapNpcLocationPins = v,
             "NPC results list at most 6 map pins; a summary line counts the rest. " +
             "Turn off to always list every location.");
 
-        var nearestAetheryte = config.ShowNearestAetheryte;
-        if (ImGui.Checkbox("Show the nearest aetheryte on map locations", ref nearestAetheryte))
-        {
-            config.ShowNearestAetheryte = nearestAetheryte;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Show the nearest aetheryte on map locations",
+            config.ShowNearestAetheryte, static (c, v) => c.ShowNearestAetheryte = v,
             "Each location line names the closest aetheryte on that map, or the closest " +
             "aethernet shard inside cities. Ex: Western Thanalan 27.5, 17.0 · Aetheryte: Horizon");
 
-        var teleport = config.TeleportButtonEnabled;
-        if (ImGui.Checkbox("Add a Teleport button next to Flag map", ref teleport))
-        {
-            config.TeleportButtonEnabled = teleport;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Add a Teleport button next to Flag map",
+            config.TeleportButtonEnabled, static (c, v) => c.TeleportButtonEnabled = v,
             "Needs the Teleporter plugin. The button only appears for " +
             "aetherytes you have attuned to, and teleports there when clicked.");
 
-        var spoilers = config.SpoilerProtectionEnabled;
-        if (ImGui.Checkbox("Hide spoilers past your MSQ progress", ref spoilers))
-        {
-            config.SpoilerProtectionEnabled = spoilers;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Hide spoilers past your MSQ progress",
+            config.SpoilerProtectionEnabled, static (c, v) => c.SpoilerProtectionEnabled = v,
             "Uses your character's quest progress. Cutscenes you haven't reached are " +
             "hidden, and duty and Main Scenario names past your progress are blurred " +
             "until clicked. Does nothing while logged out.");
 
-        var questPicker = config.ActiveQuestPickerEnabled;
-        if (ImGui.Checkbox("Show your active quests before you search", ref questPicker))
-        {
-            config.ActiveQuestPickerEnabled = questPicker;
-            config.Save();
-        }
-
-        ImGui.SameLine();
-        ImGuiComponents.HelpMarker(
+        Setting("Show your active quests before you search",
+            config.ActiveQuestPickerEnabled, static (c, v) => c.ActiveQuestPickerEnabled = v,
             "Lists the quests in your journal before you search, and behind " +
             "the Active quests button after. Clicking one looks it up.");
 
@@ -191,5 +114,22 @@ public class ConfigWindow : Window
         ImGui.SameLine();
         if (ImGui.Button("Show tutorial"))
             plugin.ShowTutorial();
+    }
+
+    // A checkbox that saves the config as soon as it's toggled, followed by a
+    // "(?)" help marker when there's help text.
+    private void Setting(string label, bool value, Action<Configuration, bool> set, string help = "")
+    {
+        if (ImGui.Checkbox(label, ref value))
+        {
+            set(config, value);
+            config.Save();
+        }
+
+        if (help.Length == 0)
+            return;
+
+        ImGui.SameLine();
+        ImGuiComponents.HelpMarker(help);
     }
 }

@@ -2,6 +2,9 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Core.Abstractions;
 
+// One source of results: LocalGameDataProvider (game sheets) or
+// ConsoleGamesWikiProvider (the wiki). QueryOrchestrator runs every available
+// provider for each query.
 public interface ISearchProvider
 {
     string Id { get; }
@@ -18,6 +21,8 @@ public enum ProviderStatus
     Skipped,
 }
 
+// What one provider returned for one query, including whether it failed or was
+// skipped, so the UI can say a source was unavailable.
 public sealed record ProviderResult(
     string ProviderId,
     IReadOnlyList<SearchResult> Results,

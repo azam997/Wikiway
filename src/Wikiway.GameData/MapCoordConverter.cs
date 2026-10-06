@@ -1,5 +1,7 @@
 namespace Wikiway.GameData;
 
+// Converts the sheets' two coordinate systems (world units, map-image pixels)
+// into the map coordinates the game shows, e.g. "X: 11.7 Y: 9.3".
 public static class MapCoordConverter
 {
     // World position -> the 1-42ish map coordinate players see. Same formula the
@@ -14,9 +16,9 @@ public static class MapCoordConverter
     }
 
     // FishingSpot.X/Z and SpearfishingNotebook.X/Y are map-image pixels
-    // (0-2048), not world units - probe-verified against Limsa Lominsa Lower
-    // Decks (7.7, 12.2), Costa del Sol (32.9, 29.3) and the Silver Bazaar
-    // (14.6, 29.5) across SizeFactor 100 and 200 maps.
+    // (0-2048), not world units - checked against Limsa Lominsa Lower Decks
+    // (7.7, 12.2), Costa del Sol (32.9, 29.3) and the Silver Bazaar (14.6,
+    // 29.5) across SizeFactor 100 and 200 maps.
     public static float FromMapPixel(float pixel, ushort sizeFactor)
     {
         var scale = sizeFactor == 0 ? 1.0f : sizeFactor / 100.0f;

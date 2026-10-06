@@ -3,6 +3,8 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Core.Wiki;
 
+// Decides which sections of a wiki page answer the question, by matching
+// heading keywords for the query's intent.
 public static class SectionExtractor
 {
     private const int MaxSections = 3;
@@ -23,8 +25,9 @@ public static class SectionExtractor
         "unlock", "access", "requirement", "entry", "getting started", "overview",
     ];
 
-    // A bare name is most often an item, so it gets the item stems on spec;
-    // ResultJoiner drops those sections unless they land on an item card.
+    // A bare name is most often an item, so it gets the item keywords as a
+    // guess; ResultJoiner drops those sections unless they land on an item
+    // card.
     private static string[]? KeywordsFor(QueryIntent intent) => intent switch
     {
         QueryIntent.Acquisition or QueryIntent.Unknown => ItemKeywords,
@@ -42,6 +45,8 @@ public static class SectionExtractor
         _ => false,
     };
 
+    // Up to MaxSections headings in page order. Transcluded sections (index
+    // "T-1") can't be fetched by index, so they're skipped.
     public static IReadOnlyList<WikiSection> SelectSections(
         QueryIntent intent, IReadOnlyList<WikiSection> sections)
     {

@@ -3,6 +3,9 @@ using Wikiway.Core.Abstractions;
 
 namespace Wikiway.Core.Wiki;
 
+// HttpClient handler that answers repeat GETs from the disk cache. It sits
+// outside ThrottlingHandler, so cache hits never wait on the rate limit. Only
+// successful responses are stored.
 public sealed class CachingHandler : DelegatingHandler
 {
     private readonly ICacheStore cache;

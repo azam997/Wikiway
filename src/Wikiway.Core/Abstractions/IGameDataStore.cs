@@ -2,6 +2,9 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Core.Abstractions;
 
+// Read access to the game's own data, implemented by LuminaGameDataStore. Core
+// only sees these plain records, never Lumina types, which keeps Core testable
+// with hand-written stubs.
 public interface IGameDataStore
 {
     IReadOnlyList<NameIndexEntry> GetAllNames(CancellationToken ct = default);
@@ -31,6 +34,7 @@ public interface IGameDataStore
     string? FindSoloDutyName(uint territoryTypeId);
 }
 
+// What a searchable name refers to; picks which Get method resolves it.
 public enum EntityKind
 {
     Item,
@@ -52,4 +56,6 @@ public enum EntityKind
     Leve,
 }
 
+// One searchable name. Name is lowercased; RowId is the row in the kind's
+// sheet.
 public sealed record NameIndexEntry(EntityKind Kind, uint RowId, string Name);

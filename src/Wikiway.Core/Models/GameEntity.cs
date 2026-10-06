@@ -1,5 +1,8 @@
 namespace Wikiway.Core.Models;
 
+// Game-data records, one per searchable kind, built by LuminaGameDataStore.
+// They carry only display-ready values (names, levels, map coordinates); no
+// sheet types leak past this point.
 public abstract record GameEntity(uint RowId, string Name);
 
 public sealed record ItemEntity(
@@ -17,6 +20,8 @@ public sealed record ItemEntity(
     public ItemFoodEffect? Food { get; init; }
 }
 
+// EventHandlers and SceneQuests are read only by EntityGrouper, to tell an
+// NPC's real posts from quest-scene copies.
 public sealed record NpcEntity(uint RowId, string Name, MapLocation? Location, int EventHandlers = 0)
     : GameEntity(RowId, Name)
 {
@@ -29,6 +34,8 @@ public sealed record CutsceneAppearance(
     int ExpansionOrder,
     MapLocation? Location = null);
 
+// MsqRequirement is the patch ("5.x") of a main-scenario prerequisite, which is
+// shown instead of walking the MSQ itself.
 public sealed record QuestEntity(
     uint RowId,
     string Name,
@@ -47,6 +54,7 @@ public sealed record QuestEntity(
 
 public sealed record QuestLink(uint RowId, string Name);
 
+// How a quest's prerequisites combine: all required, or any one of them.
 public enum QuestJoin
 {
     None,
@@ -140,13 +148,13 @@ public sealed record HuntMarkEntity(uint RowId, string Name, string Rank)
     : GameEntity(RowId, Name)
 {
     // Only the hunt-bill sheet names a zone (B ranks); spawn points and the
-    // remaining ranks are wiki territory.
+    // other ranks' zones come from the wiki.
     public string ZoneName { get; init; } = "";
 }
 
-// One card per flying zone: the quests that grant currents. Field currents
-// have no sheet coords (LGB) and the per-zone sets undercount them, so the
-// wiki covers those.
+// One card per flying zone: the quests that grant currents. Field currents have
+// no coordinates in the sheets (they're placed in the zone layout files) and
+// the per-zone sets undercount them, so the wiki covers those.
 public sealed record AetherCurrentZoneEntity(
     uint RowId, string Name, IReadOnlyList<QuestChainStep> QuestCurrents)
     : GameEntity(RowId, Name);
@@ -173,6 +181,8 @@ public sealed record LeveEntity(
     public uint GilReward { get; init; }
 }
 
+// Duties, plus unlockable areas (FieldArea) and the curated zones. ChainStart
+// is the first quest of the unlock chain.
 public sealed record DutyEntity(
     uint RowId,
     string Name,
@@ -196,6 +206,8 @@ public sealed record DutyEntity(
 // The most advanced main-scenario quest a duty's unlock chain passes through.
 public sealed record MsqGate(QuestLink Quest, string Version);
 
+// A point on an in-game map. TerritoryTypeId is the zone the map flag opens on;
+// MapX/MapY are the coordinates the game shows.
 public sealed record MapLocation(
     uint TerritoryTypeId,
     uint MapId,

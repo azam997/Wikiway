@@ -5,6 +5,8 @@ using Dalamud.Interface.Windowing;
 
 namespace Wikiway.Plugin.Windows;
 
+// First-run tour: a few pages of plain text, shown once (TutorialSeen) and
+// reopenable from settings.
 public class TutorialWindow : Window
 {
     private static readonly (string Title, string Body)[] Pages =

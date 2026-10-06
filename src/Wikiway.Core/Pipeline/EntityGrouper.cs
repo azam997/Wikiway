@@ -2,6 +2,10 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.Core.Pipeline;
 
+// Merges same-named game-data cards into one row. The NPC sheet repeats a
+// character once per quest scene and story stage, and listing every copy would
+// bury the real one. For NPCs the merge also decides which map pins to trust;
+// other kinds simply keep the first card.
 public static class EntityGrouper
 {
     // Same-named ENpc copies with at most one event handler are quest-scene
@@ -17,6 +21,9 @@ public static class EntityGrouper
     // none of them is trustworthy - show none and let the wiki answer instead.
     private const int TrustedLocationCap = 4;
 
+    // Keeps result order (a group sits where its first member was).
+    // sceneQuestVisible hides cutscene appearances from quests the player
+    // hasn't finished; null shows them all.
     public static IReadOnlyList<SearchResult> Collapse(
         IReadOnlyList<SearchResult> results, Func<uint, bool>? sceneQuestVisible = null)
     {
@@ -51,6 +58,8 @@ public static class EntityGrouper
         return output;
     }
 
+    // Builds the merged NPC card: deduplicated pins from real placements, plus
+    // cutscene appearances from the scene copies that were hidden.
     private static EntityCardResult Merge(Group group, Func<uint, bool>? sceneQuestVisible)
     {
         var hasPrimary = group.Members.Any(m =>
