@@ -190,8 +190,7 @@ public partial class MainWindow
                 DrawIconTitleRow(card, "Minion", minion.Icon, minion.Description);
                 return true;
             case EntityCardResult { Entity: OrchestrionEntity orchestrion } card:
-                DrawIconTitleRow(card,
-                    orchestrion.Category.Length > 0 ? $"Orchestrion · {orchestrion.Category}" : "Orchestrion",
+                DrawIconTitleRow(card, Label("Orchestrion", orchestrion.Category),
                     orchestrion.TeachingItem?.Icon ?? 0, orchestrion.Description);
                 return true;
             case EntityCardResult { Entity: TripleTriadCardEntity tripleTriad } card:

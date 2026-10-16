@@ -79,6 +79,43 @@ public partial class MainWindow
         return Widgets.OutlinedButton($"{label}##{id}");
     }
 
+    // The standard header line: title, accent tag, any outline tags (empty
+    // ones are skipped), source, and the expand caret.
+    private void RowHeader(EntityCardResult card, string title, string tag, params string[] outlineTags)
+    {
+        RowTitle(title);
+        RowTag(tag, TagStyle.Accent);
+        foreach (var outline in outlineTags)
+        {
+            if (outline.Length > 0)
+                RowTag(outline, TagStyle.Outline);
+        }
+
+        RowCitation(card.Source.Label);
+        RowDetailControls(card);
+    }
+
+    // "Item · Metal", or just "Item" when there's no detail.
+    private static string Label(string kind, string detail) =>
+        detail.Length > 0 ? $"{kind} · {detail}" : kind;
+
+    // The icon tile at the left of a row; the returned group holds the rest
+    // of the row beside it.
+    private static ImRaii.GroupDisposable IconRow(ushort icon)
+    {
+        DrawIconTile(icon);
+        ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
+        return ImRaii.Group();
+    }
+
+    // A one-line summary that only shows while the row is collapsed; the
+    // expanded detail shows the full text.
+    private void CollapsedSummary(EntityCardResult card, string text)
+    {
+        if (text.Length > 0 && !session.ExpandedRows.Contains(RowKey(card)))
+            EllipsizedLine(text);
+    }
+
     // Small caps heading that opens a detail block ("ACQUISITION", "USAGE").
     private void DetailLabel(string text) => TextLine(text, plugin.Fonts.Tag10, Theme.Neutral600);
 

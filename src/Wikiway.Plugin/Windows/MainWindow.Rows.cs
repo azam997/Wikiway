@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
-using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using Wikiway.Core.Models;
 using Wikiway.Plugin.GameIntegration;
@@ -12,15 +11,14 @@ namespace Wikiway.Plugin.Windows;
 
 // The collapsed face of each result row, one method per kind of result:
 // header line (title, tags, source, buttons) plus a line or two of summary.
-// What appears below once a row is expanded lives in the *Detail files.
+// Most rows build their header with RowHeader (MainWindow.RowParts.cs); quest
+// and duty rows spell theirs out because spoiler gating changes the title and
+// tags. What appears below once a row is expanded lives in the *Detail files.
 public partial class MainWindow
 {
     private void DrawNpcRow(EntityCardResult card, NpcEntity npc)
     {
-        RowTitle(npc.Name);
-        RowTag("NPC", TagStyle.Accent);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        RowHeader(card, npc.Name, "NPC");
 
         var locations = NpcLocations(card, npc);
         if (card.MergedCount > 1)
@@ -42,17 +40,13 @@ public partial class MainWindow
 
     private void DrawItemRow(EntityCardResult card, ItemEntity item)
     {
-        DrawIconTile(item.Icon);
-        ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
-        using var group = ImRaii.Group();
-        RowTitle(item.Name);
-        RowTag(item.Category.Length > 0 ? $"Item · {item.Category}" : "Item", TagStyle.Accent);
-        if (plugin.Configuration.ShowEquipmentStats && item.Equipment is { } gear)
-            RowTag($"ilvl {gear.ItemLevel} · Lv. {gear.EquipLevel}", TagStyle.Outline);
-        if (plugin.Configuration.ShowItemUsage && item.Usage is { MateriaTag.Length: > 0 } materia)
-            RowTag(materia.MateriaTag, TagStyle.Outline);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        var gearTag = plugin.Configuration.ShowEquipmentStats && item.Equipment is { } gear
+            ? $"ilvl {gear.ItemLevel} · Lv. {gear.EquipLevel}"
+            : "";
+        var materiaTag = plugin.Configuration.ShowItemUsage && item.Usage is { } usage ? usage.MateriaTag : "";
+
+        using var row = IconRow(item.Icon);
+        RowHeader(card, item.Name, Label("Item", item.Category), gearTag, materiaTag);
 
         if (item.Description.Length > 0)
             EllipsizedLine(item.Description);
@@ -73,7 +67,7 @@ public partial class MainWindow
         else
         {
             RowTitle(quest.Name);
-            RowTag(quest.Genre.Length > 0 ? $"Quest · {quest.Genre}" : "Quest", TagStyle.Accent);
+            RowTag(Label("Quest", quest.Genre), TagStyle.Accent);
         }
 
         if (quest.ClassJobLevel > 0)
@@ -117,8 +111,7 @@ public partial class MainWindow
         else
             RowTitle(duty.Name);
 
-        var kind = duty.FieldArea ? "Area" : "Duty";
-        RowTag(duty.ContentType.Length > 0 ? $"{kind} · {duty.ContentType}" : kind, TagStyle.Accent);
+        RowTag(Label(duty.FieldArea ? "Area" : "Duty", duty.ContentType), TagStyle.Accent);
         if (duty.ClassJobLevel > 0)
         {
             RowTag(duty.ItemLevel > 0
@@ -143,11 +136,7 @@ public partial class MainWindow
 
     private void DrawAchievementRow(EntityCardResult card, AchievementEntity achievement)
     {
-        RowTitle(achievement.Name);
-        RowTag(achievement.Category.Length > 0 ? $"Achievement · {achievement.Category}" : "Achievement",
-            TagStyle.Accent);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        RowHeader(card, achievement.Name, Label("Achievement", achievement.Category));
 
         if (achievement.Description.Length > 0)
             TextLine(achievement.Description, plugin.Fonts.Body13, Theme.Neutral400, wrap: true);
@@ -157,33 +146,17 @@ public partial class MainWindow
     // and the flavor text ellipsized while collapsed.
     private void DrawIconTitleRow(EntityCardResult card, string tag, ushort icon, string description = "")
     {
-        DrawIconTile(icon);
-        ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
-        using var group = ImRaii.Group();
-        RowTitle(card.Entity.Name);
-        RowTag(tag, TagStyle.Accent);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
-
-        // The expanded detail shows the full text, so the ellipsized line
-        // only appears while collapsed.
-        if (description.Length > 0 && !session.ExpandedRows.Contains(RowKey(card)))
-            EllipsizedLine(description);
+        using var row = IconRow(icon);
+        RowHeader(card, card.Entity.Name, tag);
+        CollapsedSummary(card, description);
     }
 
     private void DrawTripleTriadRow(EntityCardResult card, TripleTriadCardEntity tripleTriad)
     {
-        DrawIconTile(tripleTriad.TeachingItem?.Icon ?? 0);
-        ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
-        using var group = ImRaii.Group();
-        RowTitle(tripleTriad.Name);
-        RowTag(tripleTriad.CardType.Length > 0
-            ? $"Triple Triad · {tripleTriad.CardType}"
-            : "Triple Triad card", TagStyle.Accent);
-        if (tripleTriad.Stars > 0)
-            RowTag($"{tripleTriad.Stars}-star", TagStyle.Outline);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        var typeTag = tripleTriad.CardType.Length > 0 ? $"Triple Triad · {tripleTriad.CardType}" : "Triple Triad card";
+
+        using var row = IconRow(tripleTriad.TeachingItem?.Icon ?? 0);
+        RowHeader(card, tripleTriad.Name, typeTag, tripleTriad.Stars > 0 ? $"{tripleTriad.Stars}-star" : "");
 
         TextLine($"Top {tripleTriad.Top} · Bottom {tripleTriad.Bottom} · Left {tripleTriad.Left} · Right {tripleTriad.Right}",
             plugin.Fonts.Body13, Theme.Neutral300);
@@ -191,10 +164,7 @@ public partial class MainWindow
 
     private void DrawEmoteRow(EntityCardResult card, EmoteEntity emote)
     {
-        RowTitle(emote.Name);
-        RowTag(emote.Category.Length > 0 ? $"Emote · {emote.Category}" : "Emote", TagStyle.Accent);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        RowHeader(card, emote.Name, Label("Emote", emote.Category));
 
         if (emote.Command.Length > 0)
             TextLine(emote.Command, plugin.Fonts.Body13, Theme.Neutral400);
@@ -202,30 +172,19 @@ public partial class MainWindow
 
     private void DrawVistaRow(EntityCardResult card, VistaEntity vista)
     {
-        RowTitle(vista.Name);
-        RowTag(vista.Region.Length > 0 ? $"Vista · {vista.Region}" : "Vista", TagStyle.Accent);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        RowHeader(card, vista.Name, Label("Vista", vista.Region));
 
         if (vista.Location is { } loc)
             PinnedLocationLine(loc.ZoneName, loc, $"vista{vista.RowId}");
 
-        // The expanded detail shows the full hint, so the ellipsized line only
-        // appears while collapsed.
-        if (vista.Hint.Length > 0 && !session.ExpandedRows.Contains(RowKey(card)))
-            EllipsizedLine(vista.Hint);
+        CollapsedSummary(card, vista.Hint);
     }
 
     // Hunt marks carry a rank and (for B ranks only) a zone; spawn points
     // aren't in the game data, so the row says where to look instead.
     private void DrawHuntMarkRow(EntityCardResult card, HuntMarkEntity mark)
     {
-        RowTitle(mark.Name);
-        RowTag("Hunt mark", TagStyle.Accent);
-        if (mark.Rank.Length > 0)
-            RowTag($"Rank {mark.Rank}", TagStyle.Outline);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        RowHeader(card, mark.Name, "Hunt mark", mark.Rank.Length > 0 ? $"Rank {mark.Rank}" : "");
 
         if (mark.ZoneName.Length > 0)
         {
@@ -239,10 +198,7 @@ public partial class MainWindow
 
     private void DrawAetherCurrentRow(EntityCardResult card, AetherCurrentZoneEntity currents)
     {
-        RowTitle(currents.Name);
-        RowTag("Aether currents", TagStyle.Accent);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        RowHeader(card, currents.Name, "Aether currents");
 
         var count = currents.QuestCurrents.Count;
         TextLine(count == 1
@@ -253,12 +209,7 @@ public partial class MainWindow
 
     private void DrawFateRow(EntityCardResult card, FateEntity fate)
     {
-        RowTitle(fate.Name);
-        RowTag("FATE", TagStyle.Accent);
-        if (fate.Level > 0)
-            RowTag($"Level {fate.Level}", TagStyle.Outline);
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        RowHeader(card, fate.Name, "FATE", fate.Level > 0 ? $"Level {fate.Level}" : "");
 
         if (fate.Description.Length > 0)
             TextLine(fate.Description, plugin.Fonts.Body13, Theme.Neutral400, wrap: true);
@@ -266,17 +217,8 @@ public partial class MainWindow
 
     private void DrawLeveRow(EntityCardResult card, LeveEntity leve)
     {
-        RowTitle(leve.Name);
-        RowTag(leve.Type.Length > 0 ? $"Levequest · {leve.Type}" : "Levequest", TagStyle.Accent);
-        if (leve.Level > 0)
-        {
-            RowTag(leve.JobCategory.Length > 0
-                ? $"Level {leve.Level} · {leve.JobCategory}"
-                : $"Level {leve.Level}", TagStyle.Outline);
-        }
-
-        RowCitation(card.Source.Label);
-        RowDetailControls(card);
+        RowHeader(card, leve.Name, Label("Levequest", leve.Type),
+            leve.Level > 0 ? Label($"Level {leve.Level}", leve.JobCategory) : "");
 
         if (leve.Levemete is { } loc)
         {
@@ -286,10 +228,7 @@ public partial class MainWindow
             PinnedLocationLine(place, loc, $"leve{leve.RowId}", withZone: true);
         }
 
-        // The expanded detail shows the full brief, so the ellipsized line
-        // only appears while collapsed.
-        if (leve.Description.Length > 0 && !session.ExpandedRows.Contains(RowKey(card)))
-            EllipsizedLine(leve.Description);
+        CollapsedSummary(card, leve.Description);
     }
 
     // A wiki search hit with no extracted sections: just a pointer to the page.
