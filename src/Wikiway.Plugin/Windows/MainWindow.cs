@@ -9,6 +9,7 @@ using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using Wikiway.Core.Models;
 using Wikiway.Core.Pipeline;
@@ -26,8 +27,6 @@ public partial class MainWindow : Window, IDisposable
 {
     // Results scoring below this go under the LOW CONFIDENCE strip.
     private const double ScoreGate = 0.2;
-    private const int StyleColorCount = 21;
-    private const int StyleVarCount = 3;
     private const int QueryCapacity = 256;
     private const int MaxHistory = 20;
 
@@ -48,6 +47,9 @@ public partial class MainWindow : Window, IDisposable
     private List<ActiveQuestEntry> activeQuests = [];
     private long activeQuestsRefreshAt;
     private readonly HashSet<string> revealedSpoilers = [];
+    // The window theme, pushed in PreDraw and popped in PostDraw.
+    private ImRaii.ColorDisposable? themeColors;
+    private ImRaii.StyleDisposable? themeStyles;
 
     public MainWindow(Plugin plugin) : base("Wikiway")
     {
@@ -91,42 +93,43 @@ public partial class MainWindow : Window, IDisposable
     {
         base.PreDraw();
         var scale = ImGuiHelpers.GlobalScale;
-        ImGui.PushStyleColor(ImGuiCol.WindowBg, Theme.Bg);
-        ImGui.PushStyleColor(ImGuiCol.TitleBg, Theme.Surface);
-        ImGui.PushStyleColor(ImGuiCol.TitleBgActive, Theme.Surface);
-        ImGui.PushStyleColor(ImGuiCol.TitleBgCollapsed, Theme.Surface);
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Text);
-        ImGui.PushStyleColor(ImGuiCol.FrameBg, Theme.Surface);
-        ImGui.PushStyleColor(ImGuiCol.FrameBgHovered, Theme.Surface);
-        ImGui.PushStyleColor(ImGuiCol.FrameBgActive, Theme.Surface);
-        ImGui.PushStyleColor(ImGuiCol.Border, Theme.Divider);
-        ImGui.PushStyleColor(ImGuiCol.Separator, Theme.Divider);
-        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.Accent900);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, Theme.Accent800);
-        ImGui.PushStyleColor(ImGuiCol.PopupBg, Theme.Surface);
-        ImGui.PushStyleColor(ImGuiCol.ScrollbarBg, Theme.Bg);
-        ImGui.PushStyleColor(ImGuiCol.ScrollbarGrab, Theme.Neutral800);
-        ImGui.PushStyleColor(ImGuiCol.ScrollbarGrabHovered, Theme.Neutral700);
-        ImGui.PushStyleColor(ImGuiCol.ScrollbarGrabActive, Theme.Accent700);
-        ImGui.PushStyleColor(ImGuiCol.Header, Theme.Surface);
-        ImGui.PushStyleColor(ImGuiCol.HeaderHovered, Theme.Accent900);
-        ImGui.PushStyleColor(ImGuiCol.HeaderActive, Theme.Accent800);
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameRounding, Theme.RadiusMd * scale);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, Theme.RadiusMd * scale);
-        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, new Vector2(Theme.Space4, Theme.Space3) * scale);
+        themeColors = ImRaii.PushColor(ImGuiCol.WindowBg, Theme.Bg)
+            .Push(ImGuiCol.TitleBg, Theme.Surface)
+            .Push(ImGuiCol.TitleBgActive, Theme.Surface)
+            .Push(ImGuiCol.TitleBgCollapsed, Theme.Surface)
+            .Push(ImGuiCol.Text, Theme.Text)
+            .Push(ImGuiCol.FrameBg, Theme.Surface)
+            .Push(ImGuiCol.FrameBgHovered, Theme.Surface)
+            .Push(ImGuiCol.FrameBgActive, Theme.Surface)
+            .Push(ImGuiCol.Border, Theme.Divider)
+            .Push(ImGuiCol.Separator, Theme.Divider)
+            .Push(ImGuiCol.Button, Vector4.Zero)
+            .Push(ImGuiCol.ButtonHovered, Theme.Accent900)
+            .Push(ImGuiCol.ButtonActive, Theme.Accent800)
+            .Push(ImGuiCol.PopupBg, Theme.Surface)
+            .Push(ImGuiCol.ScrollbarBg, Theme.Bg)
+            .Push(ImGuiCol.ScrollbarGrab, Theme.Neutral800)
+            .Push(ImGuiCol.ScrollbarGrabHovered, Theme.Neutral700)
+            .Push(ImGuiCol.ScrollbarGrabActive, Theme.Accent700)
+            .Push(ImGuiCol.Header, Theme.Surface)
+            .Push(ImGuiCol.HeaderHovered, Theme.Accent900)
+            .Push(ImGuiCol.HeaderActive, Theme.Accent800);
+        themeStyles = ImRaii.PushStyle(ImGuiStyleVar.FrameRounding, Theme.RadiusMd * scale)
+            .Push(ImGuiStyleVar.WindowRounding, Theme.RadiusMd * scale)
+            .Push(ImGuiStyleVar.WindowPadding, ImGuiHelpers.ScaledVector2(Theme.Space4, Theme.Space3));
     }
 
     public override void PostDraw()
     {
-        ImGui.PopStyleVar(StyleVarCount);
-        ImGui.PopStyleColor(StyleColorCount);
+        themeStyles?.Dispose();
+        themeColors?.Dispose();
+        themeStyles = null;
+        themeColors = null;
         base.PostDraw();
     }
 
     public override void Draw()
     {
-        var root = ImGuiUnwind.Mark();
         try
         {
             plugin.QuestProgress.RefreshIfStale();
@@ -170,12 +173,12 @@ public partial class MainWindow : Window, IDisposable
             // Dalamud would catch this too, but it swaps the window for an
             // error panel until the user retries; recovering here keeps it
             // alive, and dropping the response removes whatever crashed it.
-            // Neither catch pops what was pushed before the throw, hence the
-            // explicit unwind - see ImGuiUnwind.
+            // Everything Draw pushes is an ImRaii or font-handle `using`
+            // scope, so the ImGui stacks are already unwound by the time
+            // this runs.
             Plugin.Log.Error(e, "Main window draw failed; dropping the current result view.");
             session.Response = null;
             session.Error ??= "something went wrong drawing results - run the search again";
-            ImGuiUnwind.To(root);
         }
     }
 
@@ -187,16 +190,18 @@ public partial class MainWindow : Window, IDisposable
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
-        fonts.Brand18.Push();
-        if (Plugin.TextureProvider.GetFromFile(LogoPath).GetWrapOrDefault() is { } logo)
+        using (fonts.Brand18.Push())
         {
-            var side = ImGui.GetTextLineHeight();
-            ImGui.Image(logo.Handle, new Vector2(side, side));
-            ImGui.SameLine(0, Theme.Space2 * scale);
+            if (Plugin.TextureProvider.GetFromFile(LogoPath).GetWrapOrDefault() is { } logo)
+            {
+                var side = ImGui.GetTextLineHeight();
+                ImGui.Image(logo.Handle, new Vector2(side, side));
+                ImGui.SameLine(0, Theme.Space2 * scale);
+            }
+
+            ImGui.TextUnformatted("Wikiway");
         }
 
-        ImGui.TextUnformatted("Wikiway");
-        fonts.Brand18.Pop();
         var brandMin = ImGui.GetItemRectMin();
         var brandMax = ImGui.GetItemRectMax();
 
@@ -209,11 +214,13 @@ public partial class MainWindow : Window, IDisposable
             Theme.AccentU);
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + (18f * scale) + (Theme.Space3 * scale));
 
-        fonts.Small11.Push();
-        var pos = ImGui.GetCursorScreenPos();
-        ImGui.SetCursorScreenPos(pos with { Y = brandMax.Y - ImGui.GetTextLineHeight() - (3f * scale) });
-        ColorText("LOCAL GAME DATA + CONSOLEGAMESWIKI", Theme.Neutral500);
-        fonts.Small11.Pop();
+        using (fonts.Small11.Push())
+        {
+            var pos = ImGui.GetCursorScreenPos();
+            ImGui.SetCursorScreenPos(pos with { Y = brandMax.Y - ImGui.GetTextLineHeight() - (3f * scale) });
+            ColorText("LOCAL GAME DATA + CONSOLEGAMESWIKI", Theme.Neutral500);
+        }
+
         ImGui.Spacing();
     }
 
@@ -225,9 +232,9 @@ public partial class MainWindow : Window, IDisposable
         var fonts = plugin.Fonts;
         var dl = ImGui.GetWindowDrawList();
 
-        fonts.Body14.Push();
-        var searchWidth = ImGui.CalcTextSize("Search").X + (Theme.Space4 * 2f * scale);
-        fonts.Body14.Pop();
+        float searchWidth;
+        using (fonts.Body14.Push())
+            searchWidth = ImGui.CalcTextSize("Search").X + (Theme.Space4 * 2f * scale);
 
         DrawBackButton();
 
@@ -245,35 +252,36 @@ public partial class MainWindow : Window, IDisposable
         }
 
         var glyph = FontAwesomeIcon.Search.ToIconString();
-        fonts.Citation12.Push();
-        var glyphSize = ImGui.CalcTextSize(glyph);
-        fonts.Citation12.Pop();
+        Vector2 glyphSize;
+        using (fonts.Citation12.Push())
+            glyphSize = ImGui.CalcTextSize(glyph);
 
-        fonts.Body14.Push();
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding,
-            new Vector2(glyphSize.X + (Theme.Space3 * 2f * scale), Theme.Space2 * scale));
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
+        // The left padding leaves room for the search glyph drawn over the box.
         var inputPos = ImGui.GetCursorScreenPos();
-        ImGui.SetNextItemWidth(-(searchWidth + (Theme.Space3 * scale)));
-        var submitted = ImGui.InputTextWithHint("##wikiway-query", InputHint,
-            ref session.QueryInput, 256, ImGuiInputTextFlags.EnterReturnsTrue);
-        var inputHeight = ImGui.GetItemRectSize().Y;
-        ImGui.PopStyleVar(2);
-        fonts.Body14.Pop();
+        bool submitted;
+        float inputHeight;
+        using (fonts.Body14.Push())
+        using (ImRaii.PushStyle(ImGuiStyleVar.FramePadding, new Vector2(glyphSize.X + (Theme.Space3 * 2f * scale), Theme.Space2 * scale))
+            .Push(ImGuiStyleVar.FrameBorderSize, 1f))
+        {
+            ImGui.SetNextItemWidth(-(searchWidth + (Theme.Space3 * scale)));
+            submitted = ImGui.InputTextWithHint("##wikiway-query", InputHint,
+                ref session.QueryInput, 256, ImGuiInputTextFlags.EnterReturnsTrue);
+            inputHeight = ImGui.GetItemRectSize().Y;
+        }
 
-        fonts.Citation12.Push();
-        dl.AddText(
-            inputPos + new Vector2(Theme.Space3 * scale, (inputHeight - glyphSize.Y) * 0.5f),
-            Theme.Neutral600U,
-            glyph);
-        fonts.Citation12.Pop();
+        using (fonts.Citation12.Push())
+        {
+            dl.AddText(
+                inputPos + new Vector2(Theme.Space3 * scale, (inputHeight - glyphSize.Y) * 0.5f),
+                Theme.Neutral600U,
+                glyph);
+        }
 
         ImGui.SameLine(0, Theme.Space3 * scale);
-        fonts.Body14.Push();
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-        submitted |= Widgets.OutlinedButton("Search");
-        ImGui.PopStyleVar();
-        fonts.Body14.Pop();
+        using (fonts.Body14.Push())
+        using (ImRaii.PushStyle(ImGuiStyleVar.FramePadding, ButtonPadding))
+            submitted |= Widgets.OutlinedButton("Search");
 
         if (submitted)
             RunQuery();
@@ -281,15 +289,11 @@ public partial class MainWindow : Window, IDisposable
 
     private void DrawBackButton()
     {
-        var scale = ImGuiHelpers.GlobalScale;
-
-        plugin.Fonts.Body14.Push();
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space3, Theme.Space2) * scale);
-        ImGui.BeginDisabled(history.Count == 0);
-        var clicked = Widgets.GhostButton($"{FontAwesomeIcon.ArrowLeft.ToIconString()}##wikiway-back");
-        ImGui.EndDisabled();
-        ImGui.PopStyleVar();
-        plugin.Fonts.Body14.Pop();
+        bool clicked;
+        using (plugin.Fonts.Body14.Push())
+        using (ImRaii.PushStyle(ImGuiStyleVar.FramePadding, ImGuiHelpers.ScaledVector2(Theme.Space3, Theme.Space2)))
+        using (ImRaii.Disabled(history.Count == 0))
+            clicked = Widgets.GhostButton($"{FontAwesomeIcon.ArrowLeft.ToIconString()}##wikiway-back");
 
         if (history.Count > 0 && ImGui.IsItemHovered())
             ImGui.SetTooltip($"Back to \"{history[^1]}\"");
@@ -308,26 +312,26 @@ public partial class MainWindow : Window, IDisposable
     // button.
     private void DrawQuestPicker()
     {
-        var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
-        fonts.Citation12.Push();
-        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-        var label = $"{FontAwesomeIcon.Scroll.ToIconString()} Active quests";
-        if (Widgets.OutlinedButton($"{label}##wikiway-questpick-btn"))
+        using (fonts.Citation12.Push())
+        using (ImRaii.PushStyle(ImGuiStyleVar.FramePadding, ButtonPadding))
         {
-            activeQuests = ActiveQuestReader.Read();
-            ImGui.OpenPopup("##wikiway-questpick");
+            var label = $"{FontAwesomeIcon.Scroll.ToIconString()} Active quests";
+            if (Widgets.OutlinedButton($"{label}##wikiway-questpick-btn"))
+            {
+                activeQuests = ActiveQuestReader.Read();
+                ImGui.OpenPopup("##wikiway-questpick");
+            }
         }
 
-        ImGui.PopStyleVar();
-        fonts.Citation12.Pop();
         ImGui.Spacing();
 
-        if (!ImGui.BeginPopup("##wikiway-questpick"))
+        using var popup = ImRaii.Popup("##wikiway-questpick");
+        if (!popup)
             return;
 
-        fonts.Body13.Push();
+        using var font = fonts.Body13.Push();
         if (activeQuests.Count == 0)
             ColorText("No active quests.", Theme.Neutral600);
 
@@ -336,9 +340,6 @@ public partial class MainWindow : Window, IDisposable
             if (QuestSelectable(activeQuests[i], $"##questpick{i}"))
                 ImGui.CloseCurrentPopup();
         }
-
-        fonts.Body13.Pop();
-        ImGui.EndPopup();
     }
 
     // One journal quest; tracked quests are starred and listed first.
@@ -347,11 +348,9 @@ public partial class MainWindow : Window, IDisposable
         var label = quest.Level > 0 ? $"{quest.Name}   Lv {quest.Level}" : quest.Name;
         if (quest.Tracked)
             label = $"{FontAwesomeIcon.Star.ToIconString()} {label}";
-        if (quest.Tracked)
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent100);
-        var clicked = ImGui.Selectable(label + id);
-        if (quest.Tracked)
-            ImGui.PopStyleColor();
+        bool clicked;
+        using (ImRaii.PushColor(ImGuiCol.Text, Theme.Accent100, quest.Tracked))
+            clicked = ImGui.Selectable(label + id);
 
         if (clicked)
             queuedNavigation = (quest.Name, SearchCategory.Unlocks);
@@ -398,10 +397,11 @@ public partial class MainWindow : Window, IDisposable
         DetailLabel("ACTIVE QUESTS");
         ImGui.Spacing();
 
-        fonts.Body13.Push();
-        for (var i = 0; i < quests.Count; i++)
-            QuestSelectable(quests[i], $"##idlequest{i}");
-        fonts.Body13.Pop();
+        using (fonts.Body13.Push())
+        {
+            for (var i = 0; i < quests.Count; i++)
+                QuestSelectable(quests[i], $"##idlequest{i}");
+        }
 
         ImGui.Spacing();
         TextLine("Click a quest to look it up.", fonts.Citation12, Theme.Neutral600);

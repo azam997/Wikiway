@@ -75,12 +75,13 @@ public partial class MainWindow
     {
         if (tripleTriad.NpcName.Length > 0)
         {
-            plugin.Fonts.Body13.Push();
-            GlyphPrefix(FontAwesomeIcon.MapPin);
-            ImGui.TextUnformatted($"Won from {tripleTriad.NpcName}");
-            if (tripleTriad.NpcLocation is { } loc)
-                LocationTail(loc, LocationActionsWidth(loc));
-            plugin.Fonts.Body13.Pop();
+            using (plugin.Fonts.Body13.Push())
+            {
+                GlyphPrefix(FontAwesomeIcon.MapPin);
+                ImGui.TextUnformatted($"Won from {tripleTriad.NpcName}");
+                if (tripleTriad.NpcLocation is { } loc)
+                    LocationTail(loc, LocationActionsWidth(loc));
+            }
 
             if (tripleTriad.NpcLocation is { } flagLoc)
                 LocationButtons(flagLoc, $"ttnpc{tripleTriad.RowId}");
@@ -100,14 +101,15 @@ public partial class MainWindow
         ImGui.Spacing();
         DetailLabel("SIGHTSEEING LOG");
 
-        fonts.Body13.Push();
-        if (vista.Hint.Length > 0)
-            ColorText(vista.Hint, Theme.Neutral300, wrap: true);
-        if (vista.Emote.Length > 0)
-            IconLine(FontAwesomeIcon.Eye, $"Emote: {vista.Emote}");
-        if (vista.TimeWindow.Length > 0)
-            IconLine(FontAwesomeIcon.Clock, vista.TimeWindow);
-        fonts.Body13.Pop();
+        using (fonts.Body13.Push())
+        {
+            if (vista.Hint.Length > 0)
+                ColorText(vista.Hint, Theme.Neutral300, wrap: true);
+            if (vista.Emote.Length > 0)
+                IconLine(FontAwesomeIcon.Eye, $"Emote: {vista.Emote}");
+            if (vista.TimeWindow.Length > 0)
+                IconLine(FontAwesomeIcon.Clock, vista.TimeWindow);
+        }
 
         if (vista.Lore.Length > 0)
         {
@@ -149,7 +151,7 @@ public partial class MainWindow
         ImGui.Spacing();
         DetailLabel("LEVEQUEST");
 
-        fonts.Body13.Push();
+        using var font = fonts.Body13.Push();
         if (leve.Description.Length > 0)
             ColorText(leve.Description, Theme.Neutral300, wrap: true);
 
@@ -159,6 +161,5 @@ public partial class MainWindow
         if (leve.GilReward > 0)
             reward += $" · {leve.GilReward} gil";
         IconLine(FontAwesomeIcon.Scroll, reward);
-        fonts.Body13.Pop();
     }
 }

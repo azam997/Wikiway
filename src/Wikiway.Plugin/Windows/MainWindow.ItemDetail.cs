@@ -27,7 +27,7 @@ public partial class MainWindow
 
         foreach (var recipe in acquisition.Recipes)
         {
-            fonts.Body13.Push();
+            using var font = fonts.Body13.Push();
             IconLine(FontAwesomeIcon.Hammer, recipe.Level > 0 ? $"{recipe.CraftType} · Level {recipe.Level}" : recipe.CraftType);
             if (recipe.MasterBook.Length > 0)
             {
@@ -42,8 +42,6 @@ public partial class MainWindow
                 ImGui.SameLine(0, Theme.Space2 * scale);
                 DrawItemAmounts(recipe.Ingredients);
             }
-
-            fonts.Body13.Pop();
         }
 
         for (var i = 0; i < acquisition.Vendors.Count; i++)
@@ -56,12 +54,13 @@ public partial class MainWindow
             var price = vendor.GilPrice > 0 ? $"{vendor.GilPrice} gil" : "";
             var priceWidth = PriceWidth(price);
 
-            fonts.Body13.Push();
-            GlyphPrefix(FontAwesomeIcon.MapPin);
-            ImGui.TextUnformatted(vendor.NpcName);
-            if (vendor.Location is { } loc)
-                LocationTail(loc, actionsWidth + priceWidth);
-            fonts.Body13.Pop();
+            using (fonts.Body13.Push())
+            {
+                GlyphPrefix(FontAwesomeIcon.MapPin);
+                ImGui.TextUnformatted(vendor.NpcName);
+                if (vendor.Location is { } loc)
+                    LocationTail(loc, actionsWidth + priceWidth);
+            }
 
             if (price.Length > 0)
                 DrawPrice(price, actionsWidth, priceWidth);
@@ -75,26 +74,27 @@ public partial class MainWindow
                 break;
 
             var exchange = acquisition.Exchanges[i];
-            fonts.Body13.Push();
-            GlyphPrefix(FontAwesomeIcon.ExchangeAlt);
-            ImGui.TextUnformatted(exchange.NpcName);
-            InlineText($"{exchange.ShopName} —", Theme.Neutral400);
-            // Each entry is one offer; its parts are all paid together.
-            for (var o = 0; o < exchange.Costs.Count; o++)
+            using (fonts.Body13.Push())
             {
-                if (o > 0)
+                GlyphPrefix(FontAwesomeIcon.ExchangeAlt);
+                ImGui.TextUnformatted(exchange.NpcName);
+                InlineText($"{exchange.ShopName} —", Theme.Neutral400);
+                // Each entry is one offer; its parts are all paid together.
+                for (var o = 0; o < exchange.Costs.Count; o++)
                 {
-                    ImGui.SameLine(0, 0);
-                    ColorText(",", Theme.Neutral400);
+                    if (o > 0)
+                    {
+                        ImGui.SameLine(0, 0);
+                        ColorText(",", Theme.Neutral400);
+                    }
+
+                    ImGui.SameLine(0, Theme.Space2 * scale);
+                    DrawItemAmounts(exchange.Costs[o]);
                 }
 
-                ImGui.SameLine(0, Theme.Space2 * scale);
-                DrawItemAmounts(exchange.Costs[o]);
+                if (exchange.Location is { } loc)
+                    LocationTail(loc, LocationActionsWidth(loc));
             }
-
-            if (exchange.Location is { } loc)
-                LocationTail(loc, LocationActionsWidth(loc));
-            fonts.Body13.Pop();
 
             if (exchange.Location is { } flagLoc)
                 LocationButtons(flagLoc, $"exch{ownerRowId}-{i + 1}");
@@ -106,17 +106,18 @@ public partial class MainWindow
                 break;
 
             var node = acquisition.Gathering[i];
-            fonts.Body13.Push();
-            IconLine(FontAwesomeIcon.Leaf, node.Level > 0 ? $"{node.NodeType} · Level {node.Level}" : node.NodeType);
-            if (node.TimeWindow.Length > 0)
+            using (fonts.Body13.Push())
             {
-                InlineText(FontAwesomeIcon.Clock.ToIconString(), Theme.Highlight);
-                InlineText(node.TimeWindow, Theme.Neutral300, Theme.Space2);
-            }
+                IconLine(FontAwesomeIcon.Leaf, node.Level > 0 ? $"{node.NodeType} · Level {node.Level}" : node.NodeType);
+                if (node.TimeWindow.Length > 0)
+                {
+                    InlineText(FontAwesomeIcon.Clock.ToIconString(), Theme.Highlight);
+                    InlineText(node.TimeWindow, Theme.Neutral300, Theme.Space2);
+                }
 
-            if (node.Location is { } loc)
-                LocationTail(loc, LocationActionsWidth(loc));
-            fonts.Body13.Pop();
+                if (node.Location is { } loc)
+                    LocationTail(loc, LocationActionsWidth(loc));
+            }
 
             if (node.Location is { } flagLoc)
                 LocationButtons(flagLoc, $"gather{ownerRowId}-{i + 1}");
@@ -129,13 +130,14 @@ public partial class MainWindow
 
             var spot = acquisition.Fishing[i];
             var method = spot.Spearfishing ? "Spearfishing" : "Fishing";
-            fonts.Body13.Push();
-            IconLine(FontAwesomeIcon.Fish, spot.Level > 0 ? $"{method} · Level {spot.Level}" : method);
-            ImGui.SameLine(0, Theme.Space3 * scale);
-            ImGui.TextUnformatted(spot.SpotName);
-            if (spot.Location is { } loc)
-                LocationTail(loc, LocationActionsWidth(loc));
-            fonts.Body13.Pop();
+            using (fonts.Body13.Push())
+            {
+                IconLine(FontAwesomeIcon.Fish, spot.Level > 0 ? $"{method} · Level {spot.Level}" : method);
+                ImGui.SameLine(0, Theme.Space3 * scale);
+                ImGui.TextUnformatted(spot.SpotName);
+                if (spot.Location is { } loc)
+                    LocationTail(loc, LocationActionsWidth(loc));
+            }
 
             if (spot.Location is { } flagLoc)
                 LocationButtons(flagLoc, $"fish{ownerRowId}-{i + 1}");
@@ -151,14 +153,15 @@ public partial class MainWindow
             var seals = $"{sealVendor.SealCost} seals";
             var sealsWidth = PriceWidth(seals);
 
-            fonts.Body13.Push();
-            GlyphPrefix(FontAwesomeIcon.Medal);
-            ImGui.TextUnformatted(sealVendor.NpcName);
-            if (sealVendor.RequiredRank.Length > 0)
-                InlineText($"requires {sealVendor.RequiredRank}", Theme.Neutral400);
-            if (sealVendor.Location is { } loc)
-                LocationTail(loc, actionsWidth + sealsWidth);
-            fonts.Body13.Pop();
+            using (fonts.Body13.Push())
+            {
+                GlyphPrefix(FontAwesomeIcon.Medal);
+                ImGui.TextUnformatted(sealVendor.NpcName);
+                if (sealVendor.RequiredRank.Length > 0)
+                    InlineText($"requires {sealVendor.RequiredRank}", Theme.Neutral400);
+                if (sealVendor.Location is { } loc)
+                    LocationTail(loc, actionsWidth + sealsWidth);
+            }
 
             DrawPrice(seals, actionsWidth, sealsWidth);
             if (sealVendor.Location is { } flagLoc)
@@ -167,11 +170,10 @@ public partial class MainWindow
 
         foreach (var venture in acquisition.Ventures)
         {
-            fonts.Body13.Push();
+            using var font = fonts.Body13.Push();
             IconLine(FontAwesomeIcon.Suitcase, $"Retainer venture · Level {venture.Level} {venture.Category}");
             if (venture.Quantities.Length > 0)
                 InlineText($"— {venture.Quantities} per venture", Theme.Neutral400);
-            fonts.Body13.Pop();
         }
     }
 
@@ -194,11 +196,10 @@ public partial class MainWindow
     // location buttons, so prices line up in a column across rows.
     private void DrawPrice(string price, float actionsWidth, float priceWidth)
     {
-        plugin.Fonts.Citation12.Push();
+        using var font = plugin.Fonts.Citation12.Push();
         ImGui.SameLine();
         ImGui.SetCursorPosX(RowRightEdge() - actionsWidth - priceWidth);
         ColorText(price, Theme.Neutral500);
-        plugin.Fonts.Citation12.Pop();
     }
 
     // "2x Iron Ore + 1x Fire Shard": quantities stay plain text; the item
@@ -231,10 +232,6 @@ public partial class MainWindow
         ImGui.Spacing();
         DetailLabel("EQUIPMENT");
 
-        fonts.Body13.Push();
-        IconLine(FontAwesomeIcon.ShieldAlt, eq.Slot.Length > 0 ? $"{eq.Slot} · ilvl {eq.ItemLevel}" : $"ilvl {eq.ItemLevel}");
-        InlineText(eq.ClassJobs.Length > 0 ? $"Lv. {eq.EquipLevel} · {eq.ClassJobs}" : $"Lv. {eq.EquipLevel}", Theme.Neutral400);
-
         var combat = new List<string>();
         if (eq.Weapon is { } weapon)
         {
@@ -257,12 +254,17 @@ public partial class MainWindow
             combat.Add($"Block Rate {block.Rate}{HqSuffix(block.HqRateBonus)}");
         }
 
-        if (combat.Count > 0)
-            ColorText(string.Join(" · ", combat), Theme.Neutral300);
+        using (fonts.Body13.Push())
+        {
+            IconLine(FontAwesomeIcon.ShieldAlt, eq.Slot.Length > 0 ? $"{eq.Slot} · ilvl {eq.ItemLevel}" : $"ilvl {eq.ItemLevel}");
+            InlineText(eq.ClassJobs.Length > 0 ? $"Lv. {eq.EquipLevel} · {eq.ClassJobs}" : $"Lv. {eq.EquipLevel}", Theme.Neutral400);
 
-        foreach (var stat in eq.Stats)
-            ColorText($"{stat.Name} {(stat.Value >= 0 ? "+" : "")}{stat.Value}{HqSuffix(stat.HqBonus)}", Theme.Neutral300);
-        fonts.Body13.Pop();
+            if (combat.Count > 0)
+                ColorText(string.Join(" · ", combat), Theme.Neutral300);
+
+            foreach (var stat in eq.Stats)
+                ColorText($"{stat.Name} {(stat.Value >= 0 ? "+" : "")}{stat.Value}{HqSuffix(stat.HqBonus)}", Theme.Neutral300);
+        }
 
         var meta = new List<string>();
         if (eq.MateriaSlots > 0)
@@ -304,11 +306,10 @@ public partial class MainWindow
         if (food.ExpBonusPercent > 0)
             header += $" · EXP +{food.ExpBonusPercent}%";
 
-        plugin.Fonts.Body13.Push();
+        using var font = plugin.Fonts.Body13.Push();
         IconLine(FontAwesomeIcon.Utensils, header);
         foreach (var stat in food.Stats)
             ColorText(FoodStatLine(stat), Theme.Neutral300);
-        plugin.Fonts.Body13.Pop();
     }
 
     private static string DurationLabel(int seconds) =>
@@ -339,7 +340,7 @@ public partial class MainWindow
         ImGui.Spacing();
         DetailLabel("USAGE");
 
-        fonts.Body13.Push();
+        using var font = fonts.Body13.Push();
         if (usage.MateriaTag.Length > 0)
             IconLine(FontAwesomeIcon.Gem, $"Materia · {usage.MateriaTag}");
 
@@ -376,7 +377,5 @@ public partial class MainWindow
             TextLine(string.Join(", ", map.Zones.Select(z => $"{z.ZoneName} ({z.SpotCount})")),
                 fonts.Citation12, Theme.Neutral500, wrap: true);
         }
-
-        fonts.Body13.Pop();
     }
 }

@@ -2,6 +2,7 @@ using System.Globalization;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Wikiway.Core.Models;
 using Wikiway.Plugin.GameIntegration;
 using Wikiway.Plugin.Ui;
@@ -22,11 +23,13 @@ public partial class MainWindow
     // the coordinates for labels that don't already name it.
     private void PinnedLocationLine(string label, MapLocation location, string id, bool withZone = false)
     {
-        plugin.Fonts.Body13.Push();
-        GlyphPrefix(FontAwesomeIcon.MapPin);
-        ImGui.TextUnformatted(label);
-        LocationTail(location, LocationActionsWidth(location), withZone);
-        plugin.Fonts.Body13.Pop();
+        using (plugin.Fonts.Body13.Push())
+        {
+            GlyphPrefix(FontAwesomeIcon.MapPin);
+            ImGui.TextUnformatted(label);
+            LocationTail(location, LocationActionsWidth(location), withZone);
+        }
+
         LocationButtons(location, id);
     }
 
@@ -43,9 +46,9 @@ public partial class MainWindow
     // [Teleport] [Flag] at the right edge of the line just drawn.
     private void LocationButtons(MapLocation location, string id, bool compact = false, float reserved = 0f)
     {
-        PushRowButtonStyle();
+        using var font = plugin.Fonts.Citation12.Push();
+        using var padding = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, ButtonPadding);
         DrawLocationActions(location, id, compact, reserved);
-        PopRowButtonStyle();
     }
 
     // Teleport needs the setting on, the Teleporter plugin loaded, and the
@@ -68,7 +71,7 @@ public partial class MainWindow
 
     // Draws [Teleport] [Flag] right-aligned, leaving `reserved` free to the
     // right for whatever the caller draws after (a View button). The caller
-    // holds the Citation12 font and the compact FramePadding.
+    // holds the Citation12 font and ButtonPadding.
     private void DrawLocationActions(MapLocation location, string id, bool compact = false, float reserved = 0f)
     {
         ImGui.SameLine();

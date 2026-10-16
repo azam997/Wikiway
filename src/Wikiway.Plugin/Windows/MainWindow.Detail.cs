@@ -1,4 +1,5 @@
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Utility.Raii;
 using Wikiway.Core.Models;
 using Wikiway.Plugin.GameIntegration;
 using Wikiway.Plugin.Ui;
@@ -132,13 +133,13 @@ public partial class MainWindow
             DetailLabel("FROM THE WIKI");
             if (card.WikiUrl is { } url)
             {
-                PushRowButtonStyle();
+                using var font = plugin.Fonts.Citation12.Push();
+                using var padding = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, ButtonPadding);
                 var width = FlagButtonWidth("Open");
                 ImGui.SameLine();
                 ImGui.SetCursorPosX(RowRightEdge() - width);
                 if (Widgets.OutlinedButton($"Open##wikidetail{card.Title}"))
                     BrowserOpener.Open(url);
-                PopRowButtonStyle();
             }
 
             DrawSectionList(card.Title, card.WikiSections);

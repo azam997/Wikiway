@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Wikiway.Core.Models;
 using Wikiway.Plugin.Ui;
 
@@ -21,32 +21,26 @@ public partial class MainWindow
 
     private void DrawNpcTabs(EntityCardResult card, NpcEntity npc)
     {
-        var fonts = plugin.Fonts;
-
         ImGui.Spacing();
-        fonts.Body13.Push();
-        ImGui.PushStyleColor(ImGuiCol.Tab, Theme.Surface);
-        ImGui.PushStyleColor(ImGuiCol.TabHovered, Theme.Accent900);
-        ImGui.PushStyleColor(ImGuiCol.TabActive, Theme.Accent800);
-        if (ImGui.BeginTabBar($"##npctabs{npc.RowId}"))
+        using var font = plugin.Fonts.Body13.Push();
+        using var tabColors = ImRaii.PushColor(ImGuiCol.Tab, Theme.Surface)
+            .Push(ImGuiCol.TabHovered, Theme.Accent900)
+            .Push(ImGuiCol.TabActive, Theme.Accent800);
+        using var tabBar = ImRaii.TabBar($"##npctabs{npc.RowId}");
+        if (!tabBar)
+            return;
+
+        using (var locationsTab = ImRaii.TabItem($"Locations##npcloc{npc.RowId}"))
         {
-            if (ImGui.BeginTabItem($"Locations##npcloc{npc.RowId}"))
-            {
+            if (locationsTab)
                 DrawNpcLocations(npc.RowId, NpcLocations(card, npc), card.MergedHidden);
-                ImGui.EndTabItem();
-            }
-
-            if (ImGui.BeginTabItem($"Cutscene appearances##npccs{npc.RowId}"))
-            {
-                DrawSceneAppearances(card, npc);
-                ImGui.EndTabItem();
-            }
-
-            ImGui.EndTabBar();
         }
 
-        ImGui.PopStyleColor(3);
-        fonts.Body13.Pop();
+        using (var scenesTab = ImRaii.TabItem($"Cutscene appearances##npccs{npc.RowId}"))
+        {
+            if (scenesTab)
+                DrawSceneAppearances(card, npc);
+        }
     }
 
     // One map-pin line per location, capped at MaxNpcLocationLines when the
@@ -84,11 +78,12 @@ public partial class MainWindow
             var count = group.Scenes.Count;
             var summary = count == 1 ? "1 appearance" : $"{count} appearances";
 
-            fonts.Body13.Push();
-            if (Widgets.GhostButton($"{CaretGlyph(open)} {group.Expansion} — {summary}##scenes{key}") &&
-                !session.ExpandedScenes.Remove(key))
-                session.ExpandedScenes.Add(key);
-            fonts.Body13.Pop();
+            using (fonts.Body13.Push())
+            {
+                if (Widgets.GhostButton($"{CaretGlyph(open)} {group.Expansion} — {summary}##scenes{key}") &&
+                    !session.ExpandedScenes.Remove(key))
+                    session.ExpandedScenes.Add(key);
+            }
 
             if (!open)
                 continue;
@@ -97,11 +92,12 @@ public partial class MainWindow
             foreach (var appearance in group.Scenes)
             {
                 i++;
-                fonts.Body13.Push();
-                ColorText(appearance.Quest.Name, Theme.Neutral300);
-                if (appearance.Location is { } loc)
-                    InlineText($"{loc.ZoneName} {Coords(loc.MapX, loc.MapY)}", Theme.Neutral600);
-                fonts.Body13.Pop();
+                using (fonts.Body13.Push())
+                {
+                    ColorText(appearance.Quest.Name, Theme.Neutral300);
+                    if (appearance.Location is { } loc)
+                        InlineText($"{loc.ZoneName} {Coords(loc.MapX, loc.MapY)}", Theme.Neutral600);
+                }
 
                 QuestStepButtons(appearance.Quest.Name, appearance.Location,
                     "scene", $"{npc.RowId}-{group.Order}-{i}", viewWidth);

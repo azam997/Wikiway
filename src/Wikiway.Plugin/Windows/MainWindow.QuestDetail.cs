@@ -2,6 +2,7 @@ using System.Linq;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Wikiway.Core.Models;
 using Wikiway.Plugin.Ui;
 
@@ -54,10 +55,11 @@ public partial class MainWindow
         if (chain.Join == QuestJoin.Any)
             summary += " (either)";
 
-        fonts.Body13.Push();
-        if (Widgets.GhostButton($"{summary}##chaintoggle{quest.RowId}-{index}") && !session.ExpandedChains.Remove(key))
-            session.ExpandedChains.Add(key);
-        fonts.Body13.Pop();
+        using (fonts.Body13.Push())
+        {
+            if (Widgets.GhostButton($"{summary}##chaintoggle{quest.RowId}-{index}") && !session.ExpandedChains.Remove(key))
+                session.ExpandedChains.Add(key);
+        }
 
         if (!open)
             return;
@@ -98,7 +100,7 @@ public partial class MainWindow
     // Quest name, level and completion checkmark; `number` prefixes chain steps.
     private void DrawQuestStep(QuestChainStep step, string number = "")
     {
-        plugin.Fonts.Body13.Push();
+        using var font = plugin.Fonts.Body13.Push();
         if (number.Length > 0)
         {
             ColorText(number, Theme.Neutral600);
@@ -113,7 +115,6 @@ public partial class MainWindow
             InlineText($"Lv {step.Level}", Theme.Neutral600);
 
         StepCheckmark(step.Quest.RowId);
-        plugin.Fonts.Body13.Pop();
     }
 
     // Compact [Flag] (when flagAt is set) and [View] at the end of a quest
@@ -121,22 +122,21 @@ public partial class MainWindow
     // View searches the quest.
     private void QuestStepButtons(string questName, MapLocation? flagAt, string idPrefix, string idSuffix, float viewWidth)
     {
-        PushRowButtonStyle();
+        using var font = plugin.Fonts.Citation12.Push();
+        using var padding = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, ButtonPadding);
         if (flagAt is { } start)
             DrawLocationActions(start, $"{idPrefix}flag{idSuffix}", compact: true,
                 reserved: viewWidth + (Theme.Space2 * ImGuiHelpers.GlobalScale));
 
         if (RightViewButton($"{idPrefix}{idSuffix}", viewWidth))
             queuedNavigation = (questName, SearchCategory.Unlocks);
-        PopRowButtonStyle();
     }
 
     private void MsqLine(MsqGate gate)
     {
-        plugin.Fonts.Body13.Push();
+        using var font = plugin.Fonts.Body13.Push();
         IconLine(FontAwesomeIcon.Lock, $"Main Scenario ({gate.Version})");
         StepCheckmark(gate.Quest.RowId);
-        plugin.Fonts.Body13.Pop();
     }
 
     // Checkmarks follow quest progress only; spoiler settings don't hide them.
@@ -163,26 +163,27 @@ public partial class MainWindow
             && gate.Quest.RowId == duty.UnlockQuest!.RowId
             && IsMsqTitleHidden(gate.Quest.RowId);
 
-        fonts.Body13.Push();
-        GlyphPrefix(FontAwesomeIcon.Lock);
-        if (msqUnlock)
+        using (fonts.Body13.Push())
         {
-            ColorText("Unlocked by quest:", Theme.Neutral300);
-            ImGui.SameLine(0, Theme.Space2 * scale);
-            Widgets.BlurredText(duty.UnlockQuest!.Name);
-            InlineText($"Main Scenario ({duty.MsqGate!.Version})", Theme.Neutral600);
+            GlyphPrefix(FontAwesomeIcon.Lock);
+            if (msqUnlock)
+            {
+                ColorText("Unlocked by quest:", Theme.Neutral300);
+                ImGui.SameLine(0, Theme.Space2 * scale);
+                Widgets.BlurredText(duty.UnlockQuest!.Name);
+                InlineText($"Main Scenario ({duty.MsqGate!.Version})", Theme.Neutral600);
+            }
+            else
+            {
+                ColorText($"Unlocked by quest: {duty.UnlockQuest!.Name}", Theme.Neutral300);
+            }
         }
-        else
-        {
-            ColorText($"Unlocked by quest: {duty.UnlockQuest!.Name}", Theme.Neutral300);
-        }
-
-        fonts.Body13.Pop();
 
         if (msqUnlock)
             return;
 
-        PushRowButtonStyle();
+        using var font = fonts.Citation12.Push();
+        using var padding = ImRaii.PushStyle(ImGuiStyleVar.FramePadding, ButtonPadding);
         var viewWidth = FlagButtonWidth("View quest");
         if (duty.ChainStart is { } chainStart)
         {
@@ -197,6 +198,5 @@ public partial class MainWindow
         ImGui.SetCursorPosX(RowRightEdge() - viewWidth);
         if (Widgets.OutlinedButton($"View quest##dutyunlock{duty.RowId}"))
             queuedNavigation = (duty.UnlockQuest.Name, SearchCategory.Unlocks);
-        PopRowButtonStyle();
     }
 }

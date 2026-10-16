@@ -139,11 +139,10 @@ Warnings and errors only:
 | `ConfigWindow : Window` | `Windows/ConfigWindow.cs` | Settings UI. |
 | `TutorialWindow : Window` (`OnClose` marks the tour seen) | `Windows/TutorialWindow.cs` | First-run tour. |
 
-## ImGui internals (Dalamud.Bindings.ImGui.ImGuiP)
+## ImGui state (Dalamud.Interface.Utility.Raii)
 
-ImGui drawing itself is out of scope here, but two internal-API calls matter for crash safety:
+ImGui drawing itself is out of scope here, but how pushed state is undone matters for crash safety:
 
-| Call | Location | Why |
+| Usage | Location | Why |
 |---|---|---|
-| `ImGuiP.GetCurrentWindow()` | `Ui/ImGuiUnwind.cs` → `Mark`, `To` | Mark the window `MainWindow.Draw` was entered in, and find popups or children still open when it throws. |
-| `ImGuiP.ErrorCheckEndWindowRecover(null)` | `Ui/ImGuiUnwind.cs` → `To` | Pop every colour, style var, font, group, tab bar and ID pushed since the window began. Dalamud's `WindowHost` catches a throwing `Draw` but restores nothing, and its ImGui build never runs end-of-frame recovery, so without this the leftover pushes would leak into every window drawn afterwards, other plugins included, until reload. Called from the `catch` in `MainWindow.Draw`. |
+| `ImRaii` scopes (`PushColor`, `PushStyle`, `PushId`, `PushIndent`, `Group`, `Disabled`, `TabBar`/`TabItem`, `Popup`, `Child`) and `using` on `IFontHandle.Push()` | `Windows/*`, `Ui/Widgets.cs` | Every color, style var, font, ID, group, tab bar and popup is pushed inside a `using`, so it is undone when the scope ends, including when a draw throws. Dalamud's `WindowHost` catches a throwing `Draw` but restores nothing, so manual pushes left behind would leak into every window drawn afterwards, other plugins included. The one draw-list channel split (`MainWindow.Results.cs` → `DrawRow`) is merged in a `finally`. |

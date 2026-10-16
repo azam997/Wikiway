@@ -6,6 +6,7 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Wikiway.Core.Abstractions;
 using Wikiway.Core.Models;
 using Wikiway.Plugin.Ui;
@@ -38,9 +39,8 @@ public partial class MainWindow
         {
             if (i > 0)
                 RowDivider();
-            ImGui.PushID(i);
-            DrawRow(session.AboveGate[i], topRow: i == 0);
-            ImGui.PopID();
+            using (ImRaii.PushId(i))
+                DrawRow(session.AboveGate[i], topRow: i == 0);
         }
 
         if (session.AboveGate.Count > InitialRows)
@@ -61,7 +61,7 @@ public partial class MainWindow
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
-        fonts.Small11.Push();
+        using var font = fonts.Small11.Push();
         ColorText(string.Create(CultureInfo.InvariantCulture,
             $"{result.Results.Count} RESULTS · {result.Elapsed.TotalSeconds:0.00}S"), Theme.Neutral600);
 
@@ -72,9 +72,8 @@ public partial class MainWindow
                 ImGui.SameLine(0, Theme.Space2 * scale);
                 // Provider pills share the 10px tag size; only the strip's
                 // own labels run at 11px.
-                fonts.Tag10.Push();
-                Widgets.Tag($"{provider.ProviderId.Replace('-', ' ')} {provider.Results.Count}", TagStyle.Neutral);
-                fonts.Tag10.Pop();
+                using (fonts.Tag10.Push())
+                    Widgets.Tag($"{provider.ProviderId.Replace('-', ' ')} {provider.Results.Count}", TagStyle.Neutral);
             }
         }
 
@@ -82,7 +81,6 @@ public partial class MainWindow
         var width = ImGui.CalcTextSize(label).X;
         ImGui.SameLine(RowRightEdge() - width);
         ColorText(label, Theme.Neutral600);
-        fonts.Small11.Pop();
     }
 
     private static void RowDivider()
@@ -106,28 +104,40 @@ public partial class MainWindow
         var dl = ImGui.GetWindowDrawList();
         var rowMin = ImGui.GetCursorScreenPos();
         var contentRight = rowMin.X + ImGui.GetContentRegionAvail().X;
+        Vector2 rowMax;
+        bool hovered;
 
+        // ImRaii has no scope for draw-list channels, so the finally keeps a
+        // row that throws mid-draw from leaving the window's list split.
         dl.ChannelsSplit(2);
-        dl.ChannelsSetCurrent(1);
+        try
+        {
+            dl.ChannelsSetCurrent(1);
 
-        ImGui.SetCursorScreenPos(rowMin + (new Vector2(2f + Theme.Space4, Theme.Space3) * scale));
-        ImGui.BeginGroup();
-        headerRight = RowRightEdge();
-        var known = DrawRowContent(hit);
-        if (hit is EntityCardResult detailCard && HasDetail(detailCard) && session.ExpandedRows.Contains(RowKey(detailCard)))
-            DrawCardDetail(detailCard);
-        ImGui.EndGroup();
+            ImGui.SetCursorScreenPos(rowMin + ImGuiHelpers.ScaledVector2(2f + Theme.Space4, Theme.Space3));
+            bool known;
+            using (ImRaii.Group())
+            {
+                headerRight = RowRightEdge();
+                known = DrawRowContent(hit);
+                if (hit is EntityCardResult detailCard && HasDetail(detailCard) && session.ExpandedRows.Contains(RowKey(detailCard)))
+                    DrawCardDetail(detailCard);
+            }
 
-        var rowMax = new Vector2(contentRight, ImGui.GetItemRectMax().Y + (Theme.Space3 * scale));
-        var hovered = ImGui.IsWindowHovered() && ImGui.IsMouseHoveringRect(rowMin, rowMax);
+            rowMax = new Vector2(contentRight, ImGui.GetItemRectMax().Y + (Theme.Space3 * scale));
+            hovered = ImGui.IsWindowHovered() && ImGui.IsMouseHoveringRect(rowMin, rowMax);
 
-        dl.ChannelsSetCurrent(0);
-        if (hovered)
-            dl.AddRectFilled(rowMin, rowMax, Theme.Accent900U);
+            dl.ChannelsSetCurrent(0);
+            if (hovered)
+                dl.AddRectFilled(rowMin, rowMax, Theme.Accent900U);
 
-        var mark = known ? (topRow ? Theme.AccentU : Theme.Accent700U) : Theme.Neutral800U;
-        dl.AddRectFilled(rowMin, new Vector2(rowMin.X + (2f * scale), rowMax.Y), mark, 2f * scale);
-        dl.ChannelsMerge();
+            var mark = known ? (topRow ? Theme.AccentU : Theme.Accent700U) : Theme.Neutral800U;
+            dl.AddRectFilled(rowMin, new Vector2(rowMin.X + (2f * scale), rowMax.Y), mark, 2f * scale);
+        }
+        finally
+        {
+            dl.ChannelsMerge();
+        }
 
         // The hover tint reads as clickable, so the row itself toggles its
         // detail; once expanded only the header line does, keeping clicks on
@@ -234,15 +244,16 @@ public partial class MainWindow
         dl.AddRectFilled(min, max, ImGui.IsItemHovered() ? Theme.Accent900U : Theme.SurfaceU,
             Theme.RadiusMd * scale);
 
-        fonts.Small11.Push();
-        var caret = CaretGlyph(open);
-        var lineHeight = ImGui.GetTextLineHeight();
-        var textY = min.Y + ((height - lineHeight) * 0.5f);
-        var x = min.X + (Theme.Space4 * scale);
-        dl.AddText(new Vector2(x, textY), Theme.Neutral500U, caret);
-        x += ImGui.CalcTextSize(caret).X + (Theme.Space3 * scale);
-        dl.AddText(new Vector2(x, textY), Theme.Neutral400U, label);
-        fonts.Small11.Pop();
+        using (fonts.Small11.Push())
+        {
+            var caret = CaretGlyph(open);
+            var lineHeight = ImGui.GetTextLineHeight();
+            var textY = min.Y + ((height - lineHeight) * 0.5f);
+            var x = min.X + (Theme.Space4 * scale);
+            dl.AddText(new Vector2(x, textY), Theme.Neutral500U, caret);
+            x += ImGui.CalcTextSize(caret).X + (Theme.Space3 * scale);
+            dl.AddText(new Vector2(x, textY), Theme.Neutral400U, label);
+        }
 
         return clicked;
     }
@@ -285,9 +296,8 @@ public partial class MainWindow
         for (var i = from; i < rows.Count; i++)
         {
             RowDivider();
-            ImGui.PushID(idOffset + i);
-            DrawRow(rows[i], topRow: false);
-            ImGui.PopID();
+            using (ImRaii.PushId(idOffset + i))
+                DrawRow(rows[i], topRow: false);
         }
     }
 
@@ -313,7 +323,7 @@ public partial class MainWindow
             }
 
             var pos = ImGui.GetCursorScreenPos();
-            fonts.Citation12.Push();
+            using var font = fonts.Citation12.Push();
             var lineHeight = ImGui.GetTextLineHeight();
             ImGui.GetWindowDrawList().AddRectFilled(
                 pos + new Vector2(0, (lineHeight - (12f * scale)) * 0.5f),
@@ -322,11 +332,11 @@ public partial class MainWindow
             ImGui.SetCursorScreenPos(pos + new Vector2((2f + Theme.Space3) * scale, 0));
             ColorText($"{provider.ProviderId} unavailable ({provider.Error}) - results may be incomplete.", Theme.Neutral500);
             ImGui.SameLine(0, Theme.Space3 * scale);
-            ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Theme.Space4, Theme.Space2) * scale);
-            if (Widgets.OutlinedButton($"Retry##retry{provider.ProviderId}"))
-                RunQuery();
-            ImGui.PopStyleVar();
-            fonts.Citation12.Pop();
+            using (ImRaii.PushStyle(ImGuiStyleVar.FramePadding, ButtonPadding))
+            {
+                if (Widgets.OutlinedButton($"Retry##retry{provider.ProviderId}"))
+                    RunQuery();
+            }
         }
     }
 }

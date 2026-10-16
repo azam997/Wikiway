@@ -1,6 +1,7 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 namespace Wikiway.Plugin.Windows;
@@ -64,13 +65,14 @@ public class TutorialWindow : Window
     {
         var (title, body) = Pages[page];
 
-        ImGui.BeginChild("##tutorial-body", new Vector2(0, -ImGui.GetFrameHeightWithSpacing()));
-        ImGui.TextUnformatted(title);
-        ImGui.SameLine();
-        ImGui.TextDisabled($"{page + 1} / {Pages.Length}");
-        ImGui.Separator();
-        ImGui.TextWrapped(body);
-        ImGui.EndChild();
+        using (ImRaii.Child("##tutorial-body", new Vector2(0, -ImGui.GetFrameHeightWithSpacing())))
+        {
+            ImGui.TextUnformatted(title);
+            ImGui.SameLine();
+            ImGui.TextDisabled($"{page + 1} / {Pages.Length}");
+            ImGui.Separator();
+            ImGui.TextWrapped(body);
+        }
 
         if (ImGui.Button("Skip##tutorial"))
         {

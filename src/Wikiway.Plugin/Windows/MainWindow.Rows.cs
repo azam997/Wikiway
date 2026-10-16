@@ -3,6 +3,7 @@ using System.Linq;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Wikiway.Core.Models;
 using Wikiway.Plugin.GameIntegration;
 using Wikiway.Plugin.Ui;
@@ -24,12 +25,11 @@ public partial class MainWindow
         var locations = NpcLocations(card, npc);
         if (card.MergedCount > 1)
         {
-            plugin.Fonts.Small11.Push();
+            using var font = plugin.Fonts.Small11.Push();
             var note = $"{card.MergedCount} ROWS MERGED · {locations.Count} WITH A LOCATION";
             ImGui.SameLine();
             ImGui.SetCursorPosX(headerRight - ImGui.CalcTextSize(note).X);
             ColorText(note, Theme.Neutral600);
-            plugin.Fonts.Small11.Pop();
         }
 
         // Expanded cards show the same list inside the Locations tab instead,
@@ -44,7 +44,7 @@ public partial class MainWindow
     {
         DrawIconTile(item.Icon);
         ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
-        ImGui.BeginGroup();
+        using var group = ImRaii.Group();
         RowTitle(item.Name);
         RowTag(item.Category.Length > 0 ? $"Item · {item.Category}" : "Item", TagStyle.Accent);
         if (plugin.Configuration.ShowEquipmentStats && item.Equipment is { } gear)
@@ -58,7 +58,6 @@ public partial class MainWindow
             EllipsizedLine(item.Description);
 
         TextLine(item.Marketable ? "Marketboard: yes" : "Marketboard: no", plugin.Fonts.Citation12, Theme.Neutral600);
-        ImGui.EndGroup();
     }
 
     private void DrawQuestRow(EntityCardResult card, QuestEntity quest)
@@ -136,10 +135,9 @@ public partial class MainWindow
 
         if (gated)
         {
-            plugin.Fonts.Citation12.Push();
+            using var font = plugin.Fonts.Citation12.Push();
             if (Widgets.GhostButton($"Show content from beyond MSQ progress - may contain spoilers##reveal{duty.RowId}"))
                 revealedSpoilers.Add(RowKey(card));
-            plugin.Fonts.Citation12.Pop();
         }
     }
 
@@ -161,7 +159,7 @@ public partial class MainWindow
     {
         DrawIconTile(icon);
         ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
-        ImGui.BeginGroup();
+        using var group = ImRaii.Group();
         RowTitle(card.Entity.Name);
         RowTag(tag, TagStyle.Accent);
         RowCitation(card.Source.Label);
@@ -171,15 +169,13 @@ public partial class MainWindow
         // only appears while collapsed.
         if (description.Length > 0 && !session.ExpandedRows.Contains(RowKey(card)))
             EllipsizedLine(description);
-
-        ImGui.EndGroup();
     }
 
     private void DrawTripleTriadRow(EntityCardResult card, TripleTriadCardEntity tripleTriad)
     {
         DrawIconTile(tripleTriad.TeachingItem?.Icon ?? 0);
         ImGui.SameLine(0, Theme.Space3 * ImGuiHelpers.GlobalScale);
-        ImGui.BeginGroup();
+        using var group = ImRaii.Group();
         RowTitle(tripleTriad.Name);
         RowTag(tripleTriad.CardType.Length > 0
             ? $"Triple Triad · {tripleTriad.CardType}"
@@ -191,7 +187,6 @@ public partial class MainWindow
 
         TextLine($"Top {tripleTriad.Top} · Bottom {tripleTriad.Bottom} · Left {tripleTriad.Left} · Right {tripleTriad.Right}",
             plugin.Fonts.Body13, Theme.Neutral300);
-        ImGui.EndGroup();
     }
 
     private void DrawEmoteRow(EntityCardResult card, EmoteEntity emote)
@@ -234,10 +229,9 @@ public partial class MainWindow
 
         if (mark.ZoneName.Length > 0)
         {
-            plugin.Fonts.Body13.Push();
+            using var font = plugin.Fonts.Body13.Push();
             GlyphPrefix(FontAwesomeIcon.MapPin);
             ImGui.TextUnformatted(mark.ZoneName);
-            plugin.Fonts.Body13.Pop();
         }
 
         TextLine("Spawn points live on the wiki.", plugin.Fonts.Citation12, Theme.Neutral600);
@@ -327,7 +321,6 @@ public partial class MainWindow
     // wiki rows and by the "FROM THE WIKI" block on game-data cards.
     private void DrawSectionList(string pageTitle, IReadOnlyList<WikiSectionText> sections)
     {
-        var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
 
         for (var i = 0; i < sections.Count; i++)
@@ -337,17 +330,16 @@ public partial class MainWindow
             // stay folded behind their headings when one is present.
             var flags = i == 0 && !session.HasGameResult ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
 
-            fonts.Body13.Push();
-            ImGui.PushStyleColor(ImGuiCol.Text, Theme.Neutral400);
-            var open = ImGui.CollapsingHeader($"{section.Heading.ToUpperInvariant()}###sec{pageTitle}{i}", flags);
-            ImGui.PopStyleColor();
-            fonts.Body13.Pop();
+            bool open;
+            using (fonts.Body13.Push())
+            using (ImRaii.PushColor(ImGuiCol.Text, Theme.Neutral400))
+                open = ImGui.CollapsingHeader($"{section.Heading.ToUpperInvariant()}###sec{pageTitle}{i}", flags);
 
             if (open)
             {
-                ImGui.Indent(Theme.Space4 * scale);
-                TextLine(section.Text, fonts.Section, Theme.Neutral300, wrap: true);
-                ImGui.Unindent(Theme.Space4 * scale);
+                // PushIndent applies the global scale itself.
+                using (ImRaii.PushIndent(Theme.Space4))
+                    TextLine(section.Text, fonts.Section, Theme.Neutral300, wrap: true);
                 ImGui.Spacing();
             }
         }

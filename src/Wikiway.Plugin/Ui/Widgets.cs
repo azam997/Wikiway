@@ -3,6 +3,7 @@ using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 
 namespace Wikiway.Plugin.Ui;
 
@@ -22,27 +23,22 @@ internal static class Widgets
 {
     public static bool GhostButton(string label)
     {
-        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.AccentHover);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, Theme.AccentPressed);
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
-        var clicked = ImGui.Button(label);
-        ImGui.PopStyleColor(4);
-        return clicked;
+        using var colors = ImRaii.PushColor(ImGuiCol.Button, Vector4.Zero)
+            .Push(ImGuiCol.ButtonHovered, Theme.AccentHover)
+            .Push(ImGuiCol.ButtonActive, Theme.AccentPressed)
+            .Push(ImGuiCol.Text, Theme.Accent);
+        return ImGui.Button(label);
     }
 
     public static bool OutlinedButton(string label)
     {
-        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.AccentHover);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, Theme.AccentPressed);
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent);
-        ImGui.PushStyleColor(ImGuiCol.Border, Theme.Accent);
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
-        var clicked = ImGui.Button(label);
-        ImGui.PopStyleVar();
-        ImGui.PopStyleColor(5);
-        return clicked;
+        using var colors = ImRaii.PushColor(ImGuiCol.Button, Vector4.Zero)
+            .Push(ImGuiCol.ButtonHovered, Theme.AccentHover)
+            .Push(ImGuiCol.ButtonActive, Theme.AccentPressed)
+            .Push(ImGuiCol.Text, Theme.Accent)
+            .Push(ImGuiCol.Border, Theme.Accent);
+        using var border = ImRaii.PushStyle(ImGuiStyleVar.FrameBorderSize, 1f);
+        return ImGui.Button(label);
     }
 
     // Map actions use the Highlight color and carry a glyph; measure widths
@@ -64,16 +60,13 @@ internal static class Widgets
 
     private static bool HighlightButton(string label)
     {
-        ImGui.PushStyleColor(ImGuiCol.Button, Vector4.Zero);
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, Theme.HighlightHover);
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, Theme.HighlightPressed);
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Highlight);
-        ImGui.PushStyleColor(ImGuiCol.Border, Theme.Highlight);
-        ImGui.PushStyleVar(ImGuiStyleVar.FrameBorderSize, 1f);
-        var clicked = ImGui.Button(label);
-        ImGui.PopStyleVar();
-        ImGui.PopStyleColor(5);
-        return clicked;
+        using var colors = ImRaii.PushColor(ImGuiCol.Button, Vector4.Zero)
+            .Push(ImGuiCol.ButtonHovered, Theme.HighlightHover)
+            .Push(ImGuiCol.ButtonActive, Theme.HighlightPressed)
+            .Push(ImGuiCol.Text, Theme.Highlight)
+            .Push(ImGuiCol.Border, Theme.Highlight);
+        using var border = ImRaii.PushStyle(ImGuiStyleVar.FrameBorderSize, 1f);
+        return ImGui.Button(label);
     }
 
     // Inline hyperlink text: hover shows an underline and hand cursor, click
@@ -81,9 +74,8 @@ internal static class Widgets
     // click guards don't see these - keep them out of header toggle zones.
     public static bool LinkText(string text)
     {
-        ImGui.PushStyleColor(ImGuiCol.Text, Theme.Accent300);
-        ImGui.TextUnformatted(text);
-        ImGui.PopStyleColor();
+        using (ImRaii.PushColor(ImGuiCol.Text, Theme.Accent300))
+            ImGui.TextUnformatted(text);
         if (!ImGui.IsItemHovered())
             return false;
 
