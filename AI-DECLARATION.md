@@ -5,7 +5,7 @@ processes:
   design: pair
   implementation: copilot
   unit testing: copilot
-  in game testing: none
+  in game testing: none # no AI involved; I test in-game myself before each release
   documentation: copilot
   code review: pair
 ---
