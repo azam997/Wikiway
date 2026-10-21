@@ -14,9 +14,9 @@ public sealed partial class LuminaGameDataStore
 
         // Gatherables carry their own kind so a "gather:" search can scope to
         // them; "item:" searches both kinds.
-        var gatherable = gatheringBases.Value;
+        var gatherable = GatherableItemIds();
         foreach (var row in Sheet<Item>())
-            AddName(names, gatherable.ContainsKey(row.RowId) ? EntityKind.Gatherable : EntityKind.Item,
+            AddName(names, gatherable.Contains(row.RowId) ? EntityKind.Gatherable : EntityKind.Item,
                 row.RowId, row.Name.ExtractText());
 
         ct.ThrowIfCancellationRequested();
@@ -92,7 +92,7 @@ public sealed partial class LuminaGameDataStore
     }
 
     // Single-row name reads for game-thread callers (context menu, territory
-    // change) that must not wait on any index build.
+    // change).
     public string? GetItemName(uint rowId)
     {
         var row = Sheet<Item>().GetRowOrDefault(rowId);

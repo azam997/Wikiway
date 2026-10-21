@@ -5,19 +5,22 @@ namespace Wikiway.Core.Models;
 // sheet types leak past this point.
 public abstract record GameEntity(uint RowId, string Name);
 
+// Where to get an item and what it's used for aren't on the record: they take
+// whole-sheet scans, so they're built separately when the card is opened (see
+// IGameDataStore.GetItemDetails). MateriaTag is "Critical Hit +12" style text,
+// empty for non-materia.
 public sealed record ItemEntity(
     uint RowId,
     string Name,
     string Category,
     string Description,
     bool Marketable,
-    ushort Icon = 0,
-    ItemAcquisition? Acquisition = null)
+    ushort Icon = 0)
     : GameEntity(RowId, Name)
 {
     public ItemEquipment? Equipment { get; init; }
-    public ItemUsage? Usage { get; init; }
     public ItemFoodEffect? Food { get; init; }
+    public string MateriaTag { get; init; } = "";
 }
 
 // EventHandlers and SceneQuests are read only by EntityGrouper, to tell an

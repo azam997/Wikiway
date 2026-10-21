@@ -4,7 +4,7 @@ using Xunit;
 namespace Wikiway.Canary.Tests;
 
 // Item sources: recipes, vendors, exchanges, nodes, fishing, GC seals, ventures
-// (store .Acquisition.cs / .AcquisitionIndex.cs).
+// (store .Acquisition.cs / .Shops.cs).
 public partial class GameDataCanaryTests
 {
     // Checks the sheets-first acquisition chain: Recipe results, GilShopItem ->
@@ -16,25 +16,26 @@ public partial class GameDataCanaryTests
         var store = fixture.Store();
 
         var item = store.GetItem(5057);
+        var details = store.GetItemDetails(5057);
         Assert.NotNull(item);
         Assert.Equal("Iron Ingot", item.Name);
-        Assert.NotNull(item.Acquisition);
+        Assert.NotNull(details.Acquisition);
 
-        Assert.InRange(item.Acquisition.Recipes.Count, 2, 4);
-        Assert.All(item.Acquisition.Recipes, r =>
+        Assert.InRange(details.Acquisition.Recipes.Count, 2, 4);
+        Assert.All(details.Acquisition.Recipes, r =>
         {
             Assert.False(string.IsNullOrEmpty(r.CraftType));
             Assert.InRange(r.Level, 10, 20);
             Assert.Contains(r.Ingredients, i => i.Name.Contains("Iron Ore") && i.Amount > 0);
         });
 
-        var located = item.Acquisition.Vendors.Where(v => v.Location != null).ToList();
+        var located = details.Acquisition.Vendors.Where(v => v.Location != null).ToList();
         Assert.True(located.Count >= 3, $"expected 3+ located vendors, got {located.Count}");
         Assert.Contains(located, v => v.Location!.ZoneName.Contains("Thanalan", StringComparison.OrdinalIgnoreCase));
-        Assert.All(item.Acquisition.Vendors, v => Assert.Equal(68u, v.GilPrice));
+        Assert.All(details.Acquisition.Vendors, v => Assert.Equal(68u, v.GilPrice));
     }
 
-    // Checks the SpecialShop exchange chain: receive-item reverse index ->
+    // Checks the SpecialShop exchange chain: shops offering the item ->
     // 0x1B0000 handler block -> vendor NPC. Iron Ingot has traded 1:1 for a
     // Steel Amalj'ok at the Amalj'aa beast tribe since 2013.
     [Fact]
@@ -42,17 +43,17 @@ public partial class GameDataCanaryTests
     {
         var store = fixture.Store();
 
-        var item = store.GetItem(5057);
-        Assert.NotNull(item?.Acquisition);
+        var details = store.GetItemDetails(5057);
+        Assert.NotNull(details.Acquisition);
 
-        Assert.InRange(item.Acquisition.Exchanges.Count, 1, 10);
-        Assert.All(item.Acquisition.Exchanges, e =>
+        Assert.InRange(details.Acquisition.Exchanges.Count, 1, 10);
+        Assert.All(details.Acquisition.Exchanges, e =>
         {
             Assert.False(string.IsNullOrEmpty(e.ShopName));
             Assert.False(string.IsNullOrEmpty(e.NpcName));
             Assert.NotEmpty(e.Costs);
         });
-        Assert.Contains(item.Acquisition.Exchanges,
+        Assert.Contains(details.Acquisition.Exchanges,
             e => e.Costs.Any(offer => offer.Any(p =>
                 p.Name.Contains("Steel Amalj'ok", StringComparison.OrdinalIgnoreCase) && p.Amount > 0)));
     }
@@ -69,16 +70,16 @@ public partial class GameDataCanaryTests
             .FirstOrDefault(n => n.Kind == EntityKind.Gatherable && n.Name == "iron ore");
         Assert.NotNull(ironOre);
 
-        var item = store.GetItem(ironOre.RowId);
-        Assert.NotNull(item?.Acquisition);
+        var details = store.GetItemDetails(ironOre.RowId);
+        Assert.NotNull(details.Acquisition);
 
-        Assert.InRange(item.Acquisition.Gathering.Count, 1, 8);
-        Assert.All(item.Acquisition.Gathering, g =>
+        Assert.InRange(details.Acquisition.Gathering.Count, 1, 8);
+        Assert.All(details.Acquisition.Gathering, g =>
         {
             Assert.Contains("Mining", g.NodeType, StringComparison.OrdinalIgnoreCase);
             Assert.InRange(g.Level, 10, 25);
         });
-        Assert.Contains(item.Acquisition.Gathering, g =>
+        Assert.Contains(details.Acquisition.Gathering, g =>
             g.Location is { } loc &&
             loc.ZoneName.Contains("Thanalan", StringComparison.OrdinalIgnoreCase) &&
             loc.MapX is > 1 and < 45 && loc.MapY is > 1 and < 45);
@@ -96,10 +97,10 @@ public partial class GameDataCanaryTests
         var helm = names.FirstOrDefault(n => n.Kind == EntityKind.Item && n.Name == "heavy wolfram helm");
         Assert.NotNull(helm);
 
-        var item = store.GetItem(helm.RowId);
-        Assert.NotNull(item?.Acquisition);
-        Assert.NotEmpty(item.Acquisition.Recipes);
-        Assert.All(item.Acquisition.Recipes, r => Assert.Equal("Master Armorer I", r.MasterBook));
+        var details = store.GetItemDetails(helm.RowId);
+        Assert.NotNull(details.Acquisition);
+        Assert.NotEmpty(details.Acquisition.Recipes);
+        Assert.All(details.Acquisition.Recipes, r => Assert.Equal("Master Armorer I", r.MasterBook));
 
         Assert.Contains(names, n => n.Kind == EntityKind.Item && n.Name == "master armorer i");
     }
@@ -116,9 +117,9 @@ public partial class GameDataCanaryTests
             .FirstOrDefault(n => n.Kind == EntityKind.Gatherable && n.Name == "spruce log");
         Assert.NotNull(log);
 
-        var item = store.GetItem(log.RowId);
-        Assert.NotNull(item?.Acquisition);
-        Assert.Contains(item.Acquisition.Gathering, g => g.TimeWindow == "Unspoiled · 9:00-12:00 ET");
+        var details = store.GetItemDetails(log.RowId);
+        Assert.NotNull(details.Acquisition);
+        Assert.Contains(details.Acquisition.Gathering, g => g.TimeWindow == "Unspoiled · 9:00-12:00 ET");
     }
 
     // Same join, ephemeral branch (EphemeralStartTime/EndTime). Windtea Leaves
@@ -132,12 +133,12 @@ public partial class GameDataCanaryTests
             .FirstOrDefault(n => n.Kind == EntityKind.Gatherable && n.Name == "windtea leaves");
         Assert.NotNull(leaves);
 
-        var item = store.GetItem(leaves.RowId);
-        Assert.NotNull(item?.Acquisition);
-        Assert.Contains(item.Acquisition.Gathering, g => g.TimeWindow == "Ephemeral · 16:00-20:00 ET");
+        var details = store.GetItemDetails(leaves.RowId);
+        Assert.NotNull(details.Acquisition);
+        Assert.Contains(details.Acquisition.Gathering, g => g.TimeWindow == "Ephemeral · 16:00-20:00 ET");
     }
 
-    // Checks the fishing-spot reverse index and the map-pixel coord conversion:
+    // Checks the fishing-spot scan and the map-pixel coord conversion:
     // FishingSpot.X/Z are map-image pixels, not world units, so a formula
     // regression would drift these coords off the Limsa docks. The Lominsan
     // Anchovy has swum there since 2013, and its notebook prose rides along.
@@ -147,17 +148,18 @@ public partial class GameDataCanaryTests
         var store = fixture.Store();
 
         var item = store.GetItem(4870);
+        var details = store.GetItemDetails(4870);
         Assert.NotNull(item);
         Assert.Equal("Lominsan Anchovy", item.Name);
-        Assert.NotNull(item.Acquisition);
+        Assert.NotNull(details.Acquisition);
 
-        Assert.InRange(item.Acquisition.Fishing.Count, 5, 12);
-        Assert.All(item.Acquisition.Fishing, s => Assert.False(s.Spearfishing));
-        Assert.Contains(item.Acquisition.Fishing, s =>
+        Assert.InRange(details.Acquisition.Fishing.Count, 5, 12);
+        Assert.All(details.Acquisition.Fishing, s => Assert.False(s.Spearfishing));
+        Assert.Contains(details.Acquisition.Fishing, s =>
             s.SpotName == "Limsa Lominsa Lower Decks" &&
             s.Location is { } loc &&
             loc.MapX is > 7f and < 9f && loc.MapY is > 11f and < 13f);
-        Assert.Contains("Qiqirn", item.Acquisition.FishingNote);
+        Assert.Contains("Qiqirn", details.Acquisition.FishingNote);
     }
 
     // Spearfishing rides a different chain: SpearfishingItem row ids sit in
@@ -172,9 +174,9 @@ public partial class GameDataCanaryTests
             .FirstOrDefault(n => n.Kind == EntityKind.Item && n.Name == "wentletrap");
         Assert.NotNull(wentletrap);
 
-        var item = store.GetItem(wentletrap.RowId);
-        Assert.NotNull(item?.Acquisition);
-        Assert.Contains(item.Acquisition.Fishing, s =>
+        var details = store.GetItemDetails(wentletrap.RowId);
+        Assert.NotNull(details.Acquisition);
+        Assert.Contains(details.Acquisition.Fishing, s =>
             s.Spearfishing &&
             s.Level >= 60 &&
             s.Location is { } loc &&
@@ -189,13 +191,13 @@ public partial class GameDataCanaryTests
     {
         var store = fixture.Store();
 
-        var item = store.GetAllNames()
+        var sources = store.GetAllNames()
             .Where(n => n.Kind == EntityKind.Item && n.Name == "venture")
-            .Select(n => store.GetItem(n.RowId))
-            .FirstOrDefault(i => i?.Acquisition?.SealVendors.Count > 0);
-        Assert.NotNull(item);
+            .Select(n => store.GetItemDetails(n.RowId).Acquisition)
+            .FirstOrDefault(a => a?.SealVendors.Count > 0);
+        Assert.NotNull(sources);
 
-        var vendors = item.Acquisition!.SealVendors;
+        var vendors = sources.SealVendors;
         Assert.Equal(3, vendors.Count);
         Assert.All(vendors, v =>
         {
@@ -217,26 +219,26 @@ public partial class GameDataCanaryTests
             .FirstOrDefault(n => n.Kind == EntityKind.Item && n.Name == "lominsan half barding");
         Assert.NotNull(barding);
 
-        var item = store.GetItem(barding.RowId);
-        Assert.NotNull(item?.Acquisition);
+        var details = store.GetItemDetails(barding.RowId);
+        Assert.NotNull(details.Acquisition);
 
-        var vendor = Assert.Single(item.Acquisition.SealVendors);
+        var vendor = Assert.Single(details.Acquisition.SealVendors);
         Assert.Equal("Storm Quartermaster", vendor.NpcName);
         Assert.StartsWith("Storm", vendor.RequiredRank);
     }
 
-    // Checks the venture join: RetainerTaskNormal reverse index -> RetainerTask
-    // level and class. Iron Ore has been a level 14 MIN venture with 15-50
-    // yield bands since retainers learned to swing a pickaxe.
+    // Checks the venture join: the item's RetainerTaskNormal rows ->
+    // RetainerTask level and class. Iron Ore has been a level 14 MIN venture
+    // with 15-50 yield bands since retainers learned to swing a pickaxe.
     [Fact]
     public void IronOreVentureResolvesFromSheets()
     {
         var store = fixture.Store();
 
-        var item = store.GetItem(5111);
-        Assert.NotNull(item?.Acquisition);
+        var details = store.GetItemDetails(5111);
+        Assert.NotNull(details.Acquisition);
 
-        var venture = Assert.Single(item.Acquisition.Ventures);
+        var venture = Assert.Single(details.Acquisition.Ventures);
         Assert.Equal("MIN", venture.Category);
         Assert.Equal(14, venture.Level);
         Assert.Equal("15-50", venture.Quantities);
@@ -255,9 +257,10 @@ public partial class GameDataCanaryTests
         var store = fixture.Store();
 
         var item = store.GetItem(11448);
-        Assert.NotNull(item?.Acquisition);
+        var details = store.GetItemDetails(11448);
+        Assert.NotNull(details.Acquisition);
         Assert.Equal("Prototype Gordian Armet of Fending", item.Name);
-        var sabina = item.Acquisition.Exchanges.FirstOrDefault(e => e.NpcName == "Sabina");
+        var sabina = details.Acquisition.Exchanges.FirstOrDefault(e => e.NpcName == "Sabina");
         Assert.NotNull(sabina);
         Assert.Contains("Gordian Part Exchange", sabina.ShopName);
         Assert.NotNull(sabina.Location);
@@ -271,11 +274,11 @@ public partial class GameDataCanaryTests
     {
         var store = fixture.Store();
 
-        var item = store.GetItem(36261);
-        Assert.NotNull(item?.Acquisition);
-        Assert.True(item.Acquisition.Exchanges.Count >= 3,
-            $"expected 3+ gemstone traders, got {item.Acquisition.Exchanges.Count}");
-        var gadfrid = item.Acquisition.Exchanges.FirstOrDefault(e => e.NpcName == "Gadfrid");
+        var details = store.GetItemDetails(36261);
+        Assert.NotNull(details.Acquisition);
+        Assert.True(details.Acquisition.Exchanges.Count >= 3,
+            $"expected 3+ gemstone traders, got {details.Acquisition.Exchanges.Count}");
+        var gadfrid = details.Acquisition.Exchanges.FirstOrDefault(e => e.NpcName == "Gadfrid");
         Assert.NotNull(gadfrid);
         Assert.Contains("Sharlayan", gadfrid.Location?.ZoneName ?? "", StringComparison.OrdinalIgnoreCase);
     }
@@ -287,9 +290,9 @@ public partial class GameDataCanaryTests
     {
         var store = fixture.Store();
 
-        var item = store.GetItem(12993);
-        Assert.NotNull(item?.Acquisition);
-        Assert.Contains(item.Acquisition.Exchanges,
+        var details = store.GetItemDetails(12993);
+        Assert.NotNull(details.Acquisition);
+        Assert.Contains(details.Acquisition.Exchanges,
             e => e.NpcName.Contains("Calamity Salvager", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -300,9 +303,9 @@ public partial class GameDataCanaryTests
     {
         var store = fixture.Store();
 
-        var item = store.GetItem(12669);
-        Assert.NotNull(item?.Acquisition);
-        Assert.Contains(item.Acquisition.Exchanges,
+        var details = store.GetItemDetails(12669);
+        Assert.NotNull(details.Acquisition);
+        Assert.Contains(details.Acquisition.Exchanges,
             e => e.ShopName.Contains("Scrip Exchange", StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -47,6 +47,7 @@ public sealed class Plugin : IDalamudPlugin
     public Configuration Configuration { get; }
     public IQueryPipeline Pipeline { get; }
     public ICacheStore CacheStore { get; }
+    internal IGameDataStore GameDataStore { get; }
     internal Fonts Fonts { get; }
     internal QuestProgressTracker QuestProgress { get; }
     internal TeleportService Teleport { get; }
@@ -60,7 +61,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly SoloDutyNotifier soloDutyNotifier;
     private readonly CancellationTokenSource shutdownCts = new();
     private readonly LocalGameDataProvider localProvider;
-    private readonly Task warmupTask;
+    private readonly Task cacheSweepTask;
 
     public Plugin()
     {
@@ -91,7 +92,7 @@ public sealed class Plugin : IDalamudPlugin
                 },
             });
             var wikiClient = new ConsoleGamesWikiClient(httpClient);
-            var gameDataStore = new LuminaGameDataStore(DataManager.GameData);
+            GameDataStore = new LuminaGameDataStore(DataManager.GameData);
             QuestProgress = new QuestProgressTracker();
             Teleport = new TeleportService();
 
@@ -99,7 +100,7 @@ public sealed class Plugin : IDalamudPlugin
             // first progress snapshot: a lookup tool that hides data it can't
             // verify would be wrong more often than it protects.
             localProvider = new LocalGameDataProvider(
-                gameDataStore,
+                GameDataStore,
                 id => !Configuration.SpoilerProtectionEnabled
                     || !QuestProgress.IsAvailable
                     || QuestProgress.IsComplete(id),
@@ -117,13 +118,11 @@ public sealed class Plugin : IDalamudPlugin
                 new QueryNormalizer(),
                 new ResultRanker());
 
-            // Game-thread callbacks and first searches otherwise pay for the lazy
-            // lookup builds; warm everything on one background task instead.
-            warmupTask = Task.Run(() =>
+            // Deletes wiki cache files older than a week, off the game thread.
+            cacheSweepTask = Task.Run(() =>
             {
                 try
                 {
-                    gameDataStore.WarmAll(shutdownCts.Token);
                     fileCache.Sweep(TimeSpan.FromDays(7), shutdownCts.Token);
                 }
                 catch (OperationCanceledException)
@@ -131,7 +130,7 @@ public sealed class Plugin : IDalamudPlugin
                 }
                 catch (Exception e)
                 {
-                    Log.Warning(e, "Background lookup warm-up failed.");
+                    Log.Warning(e, "Wiki cache sweep failed.");
                 }
             });
 
@@ -145,8 +144,8 @@ public sealed class Plugin : IDalamudPlugin
             if (!Configuration.TutorialSeen)
                 tutorialWindow.IsOpen = true;
 
-            contextMenuIntegration = new ContextMenuIntegration(mainWindow, gameDataStore, Configuration);
-            soloDutyNotifier = new SoloDutyNotifier(mainWindow, gameDataStore, Configuration);
+            contextMenuIntegration = new ContextMenuIntegration(mainWindow, GameDataStore, Configuration);
+            soloDutyNotifier = new SoloDutyNotifier(mainWindow, GameDataStore, Configuration);
 
             AddCommand(CommandName,
                 "Look something up. /wikiway <question or name>, " +
@@ -162,8 +161,8 @@ public sealed class Plugin : IDalamudPlugin
         {
             // Dalamud never calls Dispose on a constructor that threw. Its
             // scoped services take back the commands, events and font atlas,
-            // but the index build and warm-up would keep walking sheets and
-            // keep this assembly loaded until the game exits.
+            // but the index build would keep walking sheets and keep this
+            // assembly loaded until the game exits.
             shutdownCts.Cancel();
             httpClient?.Dispose();
             Fonts?.Dispose();
@@ -191,12 +190,11 @@ public sealed class Plugin : IDalamudPlugin
         contextMenuIntegration.Dispose();
         mainWindow.Dispose();
 
-        // In-flight searches and the index build still hold the HttpClient and
-        // this assembly; give them a moment to notice the cancellation before
-        // both are unloaded with the plugin's AssemblyLoadContext.
-        Task[] background = mainWindow.PendingSearch is { } search
-            ? [warmupTask, localProvider.IndexTask, search]
-            : [warmupTask, localProvider.IndexTask];
+        // In-flight searches, item-detail loads and the index build still hold
+        // the HttpClient and this assembly; give them a moment to notice the
+        // cancellation before both are unloaded with the plugin's
+        // AssemblyLoadContext.
+        Task[] background = [cacheSweepTask, localProvider.IndexTask, .. mainWindow.PendingTasks];
         try
         {
             Task.WhenAll(background).Wait(TimeSpan.FromSeconds(2));

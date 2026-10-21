@@ -20,6 +20,9 @@ internal sealed class SearchSession : IDisposable
     public readonly HashSet<(uint QuestRowId, int ChainIndex)> ExpandedChains = [];
     public readonly HashSet<string> ExpandedScenes = [];
     public readonly Dictionary<string, List<SceneGroup>> SceneGroups = [];
+    // Item row id -> its ACQUISITION/USAGE load, started when a card showing
+    // that item is first opened (MainWindow.LoadedItemDetails).
+    public readonly Dictionary<uint, Task<ItemDetails>> ItemDetails = [];
     public bool LowRelevanceOpen;
     public bool MoreOpen;
     public bool WikiOpen;

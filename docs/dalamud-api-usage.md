@@ -123,9 +123,10 @@ Warnings and errors only:
 - `Plugin.cs`:
   - unreadable stored config (constructor, `LoadConfiguration`, `BackUpConfigFile`);
   - cache-store warnings (constructor, passed to `FileCacheStore`);
-  - warm-up failure (constructor);
+  - wiki cache sweep failure (constructor);
   - command-name collision (`AddCommand`).
 - `MainWindow.cs`: draw-loop crash recovery (`Draw`) and failed search (`Harvest`).
+- `MainWindow.ItemDetail.cs` → `LoadedItemDetails`: failed item-detail load.
 - `QuestProgressTracker.cs` → `Refresh`: unresolved `IsQuestComplete` signature.
 - `TeleportService.cs` → `TeleportTo`, `Invoke`: teleport IPC or provider failure.
 - `BrowserOpener.cs` → `Open`: browser launch failure.

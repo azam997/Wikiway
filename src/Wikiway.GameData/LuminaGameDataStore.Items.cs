@@ -4,8 +4,8 @@ using Wikiway.Core.Models;
 namespace Wikiway.GameData;
 
 // Items: the card itself, plus the EQUIPMENT and CONSUMABLE blocks read
-// straight off the Item row. Acquisition and usage come from .Acquisition.cs
-// and .Usage.cs.
+// straight off the Item row. Acquisition and usage come from .Acquisition.cs,
+// .Shops.cs and .Usage.cs, only when the card is opened (GetItemDetails).
 public sealed partial class LuminaGameDataStore
 {
     // ItemSearchCategory 0 means the market board doesn't list the item;
@@ -22,13 +22,49 @@ public sealed partial class LuminaGameDataStore
             row.Value.ItemUICategory.ValueNullable?.Name.ExtractText() ?? "",
             row.Value.Description.ExtractText(),
             row.Value.ItemSearchCategory.RowId != 0,
-            row.Value.Icon,
-            BuildAcquisition(rowId, row.Value.PriceMid))
+            row.Value.Icon)
         {
             Equipment = BuildEquipment(row.Value),
-            Usage = BuildUsage(rowId),
             Food = BuildFood(row.Value),
+            MateriaTag = row.Value.ItemUICategory.RowId == ItemUICategoryMateria ? MateriaTag(rowId) : "",
         };
+    }
+
+    // Every item the Materia sheet tags sits in this UI category (probed
+    // 2026-10-21 against 7.3 sheets: 156 of 156), so other items skip the
+    // Materia scan. A canary test fails if a patch breaks that.
+    private const uint ItemUICategoryMateria = 58;
+
+    // ACQUISITION and USAGE for one item, built when its card is opened. Each
+    // source type scans its own sheet for rows naming the item.
+    public ItemDetails GetItemDetails(uint itemRowId)
+    {
+        var row = Sheet<Item>().GetRowOrDefault(itemRowId);
+        if (row == null || row.Value.Name.IsEmpty)
+            return new ItemDetails(null, null);
+
+        return new ItemDetails(BuildAcquisition(itemRowId, row.Value.PriceMid), BuildUsage(itemRowId));
+    }
+
+    // "Critical Hit +12" for a materia item, empty otherwise. The collapsed
+    // row shows it. Zero-value grades exist (retired main-stat materia) and
+    // get no tag.
+    private string MateriaTag(uint itemRowId)
+    {
+        foreach (var materia in Sheet<Materia>())
+        {
+            for (var i = 0; i < materia.Item.Count && i < materia.Value.Count; i++)
+            {
+                if (materia.Item[i].RowId != itemRowId || materia.Value[i] == 0)
+                    continue;
+
+                var param = materia.BaseParam.ValueNullable?.Name.ExtractText() ?? "";
+                if (param.Length > 0)
+                    return $"{param} +{materia.Value[i]}";
+            }
+        }
+
+        return "";
     }
 
     // HQ bonuses live in BaseParamSpecial/BaseParamValueSpecial as deltas keyed

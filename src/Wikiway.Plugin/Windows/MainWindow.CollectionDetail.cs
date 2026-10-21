@@ -57,7 +57,9 @@ public partial class MainWindow
                 LinkLine(FontAwesomeIcon.Book, card.Entity is EmoteEntity ? "Unlocked by item" : "Taught by item",
                     teaching.Name, SearchCategory.Items);
 
-                if (teaching.Acquisition is { } sources)
+                if (LoadedItemDetails(teaching.RowId) is not { } details)
+                    LoadingLine();
+                else if (details.Acquisition is { } sources)
                     DrawAcquisitionSources(card.Entity.RowId, sources);
             }
         }

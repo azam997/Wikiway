@@ -36,7 +36,7 @@ public sealed partial class LuminaGameDataStore
     {
         var zone = territory.PlaceName.ValueNullable?.Name.ExtractText() ?? "";
         var territoryId = PublicTerritory(territory, map);
-        return new MapLocation(territoryId, map.RowId, mapX, mapY, zone, NearestAetheryte(territoryId, map.RowId, mapX, mapY));
+        return new MapLocation(territoryId, map.RowId, mapX, mapY, zone, NearestAetheryte(territoryId, map, mapX, mapY));
     }
 
     // Quest scenes place NPCs in private copies of a zone: separate
@@ -60,13 +60,14 @@ public sealed partial class LuminaGameDataStore
     // any marker (interiors, sub-zones like the Steps of Thal) fall back to
     // the zone's designated aetheryte, which TerritoryType names for every
     // town and field territory.
-    private NearestAetheryte? NearestAetheryte(uint territoryId, uint mapId, float mapX, float mapY)
+    private NearestAetheryte? NearestAetheryte(uint territoryId, Map map, float mapX, float mapY)
     {
         var zoneAetheryte = Sheet<TerritoryType>().GetRowOrDefault(territoryId)?.Aetheryte.ValueNullable;
         var zoneName = zoneAetheryte is { IsAetheryte: true } za ? za.PlaceName.ValueNullable?.Name.ExtractText() : null;
         var zoneRowId = zoneName is { Length: > 0 } ? zoneAetheryte!.Value.RowId : 0;
 
-        if (!aetherytesByMap.Value.TryGetValue(mapId, out var markers))
+        var markers = AetheryteMarkers(map);
+        if (markers.Count == 0)
             return zoneRowId == 0 ? null : new NearestAetheryte(zoneName!, false, zoneRowId, zoneName!);
 
         AetheryteMarker? best = null;
@@ -104,60 +105,51 @@ public sealed partial class LuminaGameDataStore
         return new NearestAetheryte(nearest.Name, true, teleportId, teleportName);
     }
 
-    // Map -> the aetheryte and aethernet-shard markers drawn on it, in map
-    // coordinates.
-    private Dictionary<uint, List<AetheryteMarker>> BuildAetheryteMarkers()
+    // The aetheryte and aethernet-shard markers drawn on one map, in map
+    // coordinates. The Map row points straight at its MapMarker subrows.
+    private List<AetheryteMarker> AetheryteMarkers(Map map)
     {
-        var byMap = new Dictionary<uint, List<AetheryteMarker>>();
-        var markers = SubrowSheet<MapMarker>();
-        var aetherytes = Sheet<Aetheryte>();
-        var places = Sheet<PlaceName>();
-        foreach (var map in Sheet<Map>())
+        var list = new List<AetheryteMarker>();
+        var range = SubrowSheet<MapMarker>().GetRowOrDefault(map.MapMarkerRange);
+        if (range == null)
+            return list;
+
+        foreach (var marker in range.Value)
         {
-            var range = markers.GetRowOrDefault(map.MapMarkerRange);
-            if (range == null)
-                continue;
-
-            foreach (var marker in range.Value)
+            string name;
+            var aetheryteRowId = 0u;
+            if (marker.DataType == MapMarkerAetheryte)
             {
-                string name;
-                var aetheryteRowId = 0u;
-                if (marker.DataType == MapMarkerAetheryte)
-                {
-                    var aetheryte = aetherytes.GetRowOrDefault(marker.DataKey.RowId);
-                    if (aetheryte is not { IsAetheryte: true } a ||
-                        a.PlaceName.ValueNullable is not { } place || place.Name.IsEmpty)
-                        continue;
-
-                    name = place.Name.ExtractText();
-                    aetheryteRowId = a.RowId;
-                }
-                else if (marker.DataType == MapMarkerAethernet)
-                {
-                    var place = places.GetRowOrDefault(marker.DataKey.RowId);
-                    if (place == null || place.Value.Name.IsEmpty)
-                        continue;
-
-                    name = place.Value.Name.ExtractText();
-                }
-                else
-                {
+                var aetheryte = Sheet<Aetheryte>().GetRowOrDefault(marker.DataKey.RowId);
+                if (aetheryte is not { IsAetheryte: true } a ||
+                    a.PlaceName.ValueNullable is not { } place || place.Name.IsEmpty)
                     continue;
-                }
 
-                if (!byMap.TryGetValue(map.RowId, out var list))
-                    byMap[map.RowId] = list = [];
-
-                list.Add(new AetheryteMarker(
-                    aetheryteRowId,
-                    name,
-                    aetheryteRowId == 0,
-                    MapCoordConverter.FromMapPixel(marker.X, map.SizeFactor),
-                    MapCoordConverter.FromMapPixel(marker.Y, map.SizeFactor)));
+                name = place.Name.ExtractText();
+                aetheryteRowId = a.RowId;
             }
+            else if (marker.DataType == MapMarkerAethernet)
+            {
+                var place = Sheet<PlaceName>().GetRowOrDefault(marker.DataKey.RowId);
+                if (place == null || place.Value.Name.IsEmpty)
+                    continue;
+
+                name = place.Value.Name.ExtractText();
+            }
+            else
+            {
+                continue;
+            }
+
+            list.Add(new AetheryteMarker(
+                aetheryteRowId,
+                name,
+                aetheryteRowId == 0,
+                MapCoordConverter.FromMapPixel(marker.X, map.SizeFactor),
+                MapCoordConverter.FromMapPixel(marker.Y, map.SizeFactor)));
         }
 
-        return byMap;
+        return list;
     }
 
     private readonly record struct AetheryteMarker(

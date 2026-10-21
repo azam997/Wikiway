@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
 using Dalamud.Interface.Utility;
@@ -10,11 +11,72 @@ using Wikiway.Plugin.Ui;
 namespace Wikiway.Plugin.Windows;
 
 // Expanded item detail: EQUIPMENT, CONSUMABLE, ACQUISITION and USAGE blocks.
-// The data comes pre-resolved on ItemEntity (LuminaGameDataStore.Items,
-// .Acquisition, .Usage); this file only lays it out.
+// EQUIPMENT and CONSUMABLE come on ItemEntity. ACQUISITION and USAGE take
+// whole-sheet scans, so they load on a background task the first time a card
+// showing the item is opened, and are kept until the next search.
 public partial class MainWindow
 {
     private const int MaxVendorLines = 6;
+
+    // The item's ItemDetails, or null while they're still loading (the first
+    // call starts the load). A failed load is logged and shows as empty.
+    private ItemDetails? LoadedItemDetails(uint itemRowId)
+    {
+        if (!session.ItemDetails.TryGetValue(itemRowId, out var load))
+        {
+            var store = plugin.GameDataStore;
+            load = Task.Run(() => store.GetItemDetails(itemRowId));
+            session.ItemDetails[itemRowId] = load;
+        }
+
+        if (!load.IsCompleted)
+            return null;
+
+        if (load.IsCompletedSuccessfully)
+            return load.Result;
+
+        Plugin.Log.Error(load.Exception?.GetBaseException(), $"Loading item {itemRowId} sources failed.");
+        var empty = new ItemDetails(null, null);
+        session.ItemDetails[itemRowId] = Task.FromResult(empty);
+        return empty;
+    }
+
+    private void LoadingLine()
+    {
+        ImGui.Spacing();
+        TextLine("Loading…", plugin.Fonts.Citation12, Theme.Neutral600);
+    }
+
+    // ACQUISITION and USAGE for an expanded item card. A card with nothing
+    // else to show gets a line saying so, rather than opening empty.
+    private void DrawItemSources(EntityCardResult card, ItemEntity item)
+    {
+        if (LoadedItemDetails(item.RowId) is not { } details)
+        {
+            LoadingLine();
+            return;
+        }
+
+        if (details.Acquisition is { } acquisition)
+        {
+            ImGui.Spacing();
+            DetailLabel("ACQUISITION");
+            DrawAcquisitionSources(item.RowId, acquisition);
+        }
+
+        var showUsage = plugin.Configuration.ShowItemUsage && (details.Usage != null || item.MateriaTag.Length > 0);
+        if (showUsage)
+            DrawUsage(item.MateriaTag, details.Usage);
+
+        var showsStats = plugin.Configuration.ShowEquipmentStats && (item.Equipment != null || item.Food != null);
+        if (details.Acquisition == null && !showUsage && !showsStats && card.WikiSections.Count == 0)
+        {
+            ImGui.Spacing();
+            TextLine(NoItemDataText, plugin.Fonts.Citation12, Theme.Neutral600, wrap: true);
+        }
+    }
+
+    private const string NoItemDataText = "Missing from game data, check wiki result for more information.";
 
     // One line per source: recipes, gil vendors, special-shop exchanges,
     // gathering nodes, fishing holes, GC seal vendors and retainer ventures.
@@ -331,8 +393,9 @@ public partial class MainWindow
     }
 
     // What the item is used for: materia stat, recipe count, custom
-    // deliveries, collectable turn-ins, and treasure-map dig zones.
-    private void DrawUsage(ItemUsage usage)
+    // deliveries, collectable turn-ins, and treasure-map dig zones. A materia
+    // with no other use passes a null usage.
+    private void DrawUsage(string materiaTag, ItemUsage? usage)
     {
         var scale = ImGuiHelpers.GlobalScale;
         var fonts = plugin.Fonts;
@@ -341,8 +404,11 @@ public partial class MainWindow
         DetailLabel("USAGE");
 
         using var font = fonts.Body13.Push();
-        if (usage.MateriaTag.Length > 0)
-            IconLine(FontAwesomeIcon.Gem, $"Materia · {usage.MateriaTag}");
+        if (materiaTag.Length > 0)
+            IconLine(FontAwesomeIcon.Gem, $"Materia · {materiaTag}");
+
+        if (usage == null)
+            return;
 
         if (usage.UsedInRecipes > 0)
             IconLine(FontAwesomeIcon.Hammer,

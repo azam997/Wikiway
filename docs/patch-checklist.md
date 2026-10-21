@@ -23,7 +23,7 @@ when a canary run fails.
      renumbered, or a schema update in Lumina.Excel). The failing test's file
      names the feature: a failure in `GameDataCanaryTests.Acquisition.cs` is
      fixed in `src\Wikiway.GameData\LuminaGameDataStore.Acquisition.cs` (or
-     `.AcquisitionIndex.cs`), and so on - the full list is in
+     `.Shops.cs`), and so on - the full list is in
      [how-it-works.md](how-it-works.md#game-data).
    - **WikiLive failures** mean the wiki changed its API or response shape.
      Fix `src\Wikiway.Core\Wiki\ConsoleGamesWikiClient.cs` and update the

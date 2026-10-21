@@ -46,22 +46,31 @@ public sealed partial class LuminaGameDataStore
     ];
 
     // The name for the solo-duty toast, or null when the territory isn't a solo
-    // duty.
-    public string? FindSoloDutyName(uint territoryTypeId)
+    // duty. Runs on the game thread at zone-in; the duty sheet is ~1k rows.
+    public string? FindSoloDutyName(uint territoryTypeId) =>
+        DutyForTerritory(territoryTypeId) is { } duty && IsSolo(duty) ? duty.Name.ExtractText() : null;
+
+    // Duty card for a territory id.
+    public DutyEntity? FindDutyByTerritory(uint territoryTypeId) =>
+        DutyForTerritory(territoryTypeId) is { } duty ? GetDuty(duty.RowId) : null;
+
+    // The first named CFC row that uses the territory.
+    private ContentFinderCondition? DutyForTerritory(uint territoryTypeId)
     {
-        // Game-thread callback (TerritoryChanged): never build or wait on the
-        // lazy lookup here. Before WarmAll has built it, skip the toast.
-        if (dutyByTerritory.ValueIfBuilt is not { } lookup || !lookup.TryGetValue(territoryTypeId, out var rowId))
+        if (territoryTypeId == 0)
             return null;
 
-        var row = Sheet<ContentFinderCondition>().GetRowOrDefault(rowId);
-        if (row == null || row.Value.Name.IsEmpty)
-            return null;
+        foreach (var duty in Sheet<ContentFinderCondition>())
+        {
+            if (duty.TerritoryType.RowId == territoryTypeId && !duty.Name.IsEmpty)
+                return duty;
+        }
 
-        return row.Value.ContentType.RowId is ContentTypeQuestBattles or ContentTypeMaskedCarnivale
-            ? row.Value.Name.ExtractText()
-            : null;
+        return null;
     }
+
+    private static bool IsSolo(ContentFinderCondition row) =>
+        row.ContentType.RowId is ContentTypeQuestBattles or ContentTypeMaskedCarnivale;
 
     // Content gated behind a side quest is listed as Unlockable rather than
     // Duty; content behind the MSQ stays a Duty.
@@ -92,7 +101,8 @@ public sealed partial class LuminaGameDataStore
     }
 
     // InstanceContent id -> unlocking Quest row, read from quests'
-    // INSTANCEDUNGEON script parameters.
+    // INSTANCEDUNGEON script parameters. Built once and kept (see
+    // LuminaGameDataStore.cs): every duty result needs it.
     private Dictionary<uint, uint> BuildInstanceUnlockLookup()
     {
         // Several quests can reference one instance (relic re-checks, later
@@ -148,7 +158,7 @@ public sealed partial class LuminaGameDataStore
             return null;
 
         var duty = row.Value;
-        var solo = duty.ContentType.RowId is ContentTypeQuestBattles or ContentTypeMaskedCarnivale;
+        var solo = IsSolo(duty);
 
         var unlockId = ResolveUnlockQuestId(duty);
         var unlockEntity = unlockId != 0 ? GetQuest(unlockId) : null;
@@ -206,20 +216,4 @@ public sealed partial class LuminaGameDataStore
 
     private static bool IsFieldArea(ContentFinderCondition row) =>
         row.ContentLinkType == ContentLinkTypePublicContent && AreaContentTypes.Contains(row.ContentType.RowId);
-
-    // Duty card for a territory id (the first named CFC row that uses it).
-    public DutyEntity? FindDutyByTerritory(uint territoryTypeId) =>
-        dutyByTerritory.Value.TryGetValue(territoryTypeId, out var rowId) ? GetDuty(rowId) : null;
-
-    private Dictionary<uint, uint> BuildDutyTerritoryLookup()
-    {
-        var lookup = new Dictionary<uint, uint>();
-        foreach (var duty in Sheet<ContentFinderCondition>())
-        {
-            if (duty.TerritoryType.RowId != 0 && !duty.Name.IsEmpty)
-                lookup.TryAdd(duty.TerritoryType.RowId, duty.RowId);
-        }
-
-        return lookup;
-    }
 }

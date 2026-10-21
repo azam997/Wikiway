@@ -263,15 +263,13 @@ public partial class GameDataCanaryTests
         Assert.InRange(solos, 80, 1000);
     }
 
-    // The light territory path used at zone-in re-implements solo detection
-    // without the unlock-chain resolution; the two must never disagree. It
-    // also must not build the lookup itself (game-thread callback) - cold it
-    // returns null, so warm the store first the way Plugin's WarmAll task does.
+    // The light territory path used at zone-in skips the unlock-chain
+    // resolution; it must never disagree with the full duty card. It runs on
+    // the game thread with no warm-up, so a fresh store must answer at once.
     [Fact]
     public void SoloDutyTerritoryPathAgreesWithFullResolution()
     {
         var store = fixture.Store();
-        store.WarmAll(CancellationToken.None);
         var cfc = fixture.GameData!.GetExcelSheet<Lumina.Excel.Sheets.ContentFinderCondition>()!;
 
         var solos = 0;
@@ -296,9 +294,7 @@ public partial class GameDataCanaryTests
 
         Assert.True(solos > 80, $"only {solos} solo territories resolved - the light path drifted");
 
-        // The zone-in callback contract: before WarmAll, the light path skips
-        // rather than building the lookup on the game thread.
-        Assert.Null(new LuminaGameDataStore(fixture.GameData!).FindSoloDutyName(soloTerritory));
+        Assert.NotNull(new LuminaGameDataStore(fixture.GameData!).FindSoloDutyName(soloTerritory));
 
         var dungeon = cfc.First(r =>
             !r.Name.IsEmpty && r.Name.ExtractText().Contains("Sastasha", StringComparison.OrdinalIgnoreCase));

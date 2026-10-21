@@ -11,8 +11,8 @@ namespace Wikiway.GameData;
 // canary tests construct it straight from a game install.
 //
 // The class is split by feature: .Names (the search index), .Items,
-// .Acquisition + .AcquisitionIndex, .Usage, .Collections, .Quests, .Duties,
-// .Npcs, .World (vistas, hunts, currents, FATEs, leves, achievements) and
+// .Acquisition + .Shops, .Usage, .Collections, .Quests, .Duties, .Npcs,
+// .World (vistas, hunts, currents, FATEs, leves, achievements) and
 // .Locations (map coordinates, nearest aetheryte).
 //
 // Sheet facts that aren't obvious from the column names were checked against
@@ -23,33 +23,27 @@ public sealed partial class LuminaGameDataStore : IGameDataStore
 {
     private readonly Lumina.GameData gameData;
 
-    // Reverse indexes ("which recipes make item X") need a full scan of one
-    // or more sheets, so each is built once on first use, or ahead of time by
-    // WarmAll on a background task, then kept for the plugin's lifetime.
-    // The builders live in the feature files.
-    private readonly LazyLookup<Dictionary<uint, List<uint>>> gatheringBases;
-    private readonly LazyLookup<AcquisitionIndex> acquisitionIndex;
-    private readonly LazyLookup<UsageIndex> usageIndex;
-    private readonly LazyLookup<ItemActionTeachers> teachers;
-    private readonly LazyLookup<Dictionary<uint, uint>> unlockQuestByInstance;
+    // Most reads happen on request: a search builds one card per match from
+    // forward row reads, and an item card's sources are scanned when the card
+    // is opened (GetItemDetails). The two lookups below are the exception:
+    // every result of their kind needs them before it can be shown, so a
+    // scan per result would multiply with the match count. Each is built once
+    // on first use and kept.
+
+    // Where each NPC stands. Merging an NPC's copies (Y'shtola has 415) needs
+    // every copy's position.
     private readonly LazyLookup<Dictionary<uint, Level>> npcLevels;
-    private readonly LazyLookup<Dictionary<uint, uint>> dutyByTerritory;
-    private readonly LazyLookup<Dictionary<uint, string>> markZoneByBNpcName;
-    private readonly LazyLookup<Dictionary<uint, List<AetheryteMarker>>> aetherytesByMap;
+
+    // Which quest unlocks each instanced duty. The name index needs it to tell
+    // duties from unlockables, and every duty card needs it for spoiler hiding.
+    private readonly LazyLookup<Dictionary<uint, uint>> unlockQuestByInstance;
 
     public LuminaGameDataStore(Lumina.GameData gameData)
     {
         this.gameData = gameData;
 
-        gatheringBases = new(BuildGatheringItemLookup);
-        acquisitionIndex = new(BuildAcquisitionIndex);
-        usageIndex = new(BuildUsageIndex);
-        teachers = new(BuildTeacherLookup);
-        unlockQuestByInstance = new(BuildInstanceUnlockLookup);
         npcLevels = new(BuildNpcLevelLookup);
-        dutyByTerritory = new(BuildDutyTerritoryLookup);
-        markZoneByBNpcName = new(BuildMarkZoneLookup);
-        aetherytesByMap = new(BuildAetheryteMarkers);
+        unlockQuestByInstance = new(BuildInstanceUnlockLookup);
     }
 
     // The `!` alternative turns a renamed sheet after a game patch into a bare
@@ -61,26 +55,6 @@ public sealed partial class LuminaGameDataStore : IGameDataStore
     private SubrowExcelSheet<T> SubrowSheet<T>() where T : struct, IExcelSubrow<T> =>
         gameData.GetSubrowExcelSheet<T>()
         ?? throw new InvalidOperationException($"{typeof(T).Name} sheet missing - game patch?");
-
-    // Builds every lazy index up front (Plugin starts this on a background
-    // task at load) so no lookup ever pays for a sheet scan mid-search or on
-    // the game thread.
-    public void WarmAll(CancellationToken ct)
-    {
-        _ = acquisitionIndex.Value;
-        _ = teachers.Value;
-        _ = usageIndex.Value;
-        ct.ThrowIfCancellationRequested();
-        _ = unlockQuestByInstance.Value;
-        ct.ThrowIfCancellationRequested();
-        _ = npcLevels.Value;
-        ct.ThrowIfCancellationRequested();
-        _ = dutyByTerritory.Value;
-        ct.ThrowIfCancellationRequested();
-        _ = markZoneByBNpcName.Value;
-        ct.ThrowIfCancellationRequested();
-        _ = aetherytesByMap.Value;
-    }
 
     // Appends to a one-to-many index, creating the list on first use.
     private static void Add(Dictionary<uint, List<uint>> lookup, uint key, uint value)

@@ -2,19 +2,19 @@ using Xunit;
 
 namespace Wikiway.Canary.Tests;
 
-// The USAGE block's reverse indexes (store .Usage.cs).
+// The USAGE block (store .Usage.cs) and the materia tag (.Items.cs).
 public partial class GameDataCanaryTests
 {
-    // Checks the reverse ingredient index. Iron Ingot has fed 100+ recipes for
-    // years; a collapse here means the ingredient scan broke.
+    // Checks the ingredient count. Iron Ingot has fed 100+ recipes for years;
+    // a collapse here means the ingredient scan broke.
     [Fact]
     public void IronIngotUsageCountsItsRecipes()
     {
         var store = fixture.Store();
 
-        var item = store.GetItem(5057);
-        Assert.NotNull(item?.Usage);
-        Assert.InRange(item.Usage.UsedInRecipes, 100, 400);
+        var details = store.GetItemDetails(5057);
+        Assert.NotNull(details.Usage);
+        Assert.InRange(details.Usage.UsedInRecipes, 100, 400);
     }
 
     // Checks the custom-delivery chain: SatisfactionNpc.SatisfactionNpcParams
@@ -25,10 +25,10 @@ public partial class GameDataCanaryTests
     {
         var store = fixture.Store();
 
-        var item = store.GetItem(28199);
-        Assert.NotNull(item?.Usage);
+        var details = store.GetItemDetails(28199);
+        Assert.NotNull(details.Usage);
 
-        var delivery = item.Usage.Deliveries.SingleOrDefault(
+        var delivery = details.Usage.Deliveries.SingleOrDefault(
             d => d.NpcName.Contains("Kai-Shirr", StringComparison.OrdinalIgnoreCase));
         Assert.NotNull(delivery);
         Assert.Equal("Oh, Beehive Yourself", delivery.UnlockQuest?.Name);
@@ -42,10 +42,10 @@ public partial class GameDataCanaryTests
     {
         var store = fixture.Store();
 
-        var item = store.GetItem(43922);
-        Assert.NotNull(item?.Usage);
+        var details = store.GetItemDetails(43922);
+        Assert.NotNull(details.Usage);
 
-        var turnIn = Assert.Single(item.Usage.CollectableTurnIns);
+        var turnIn = Assert.Single(details.Usage.CollectableTurnIns);
         Assert.Equal(100, turnIn.LevelMin);
         Assert.Equal(38, turnIn.MaxScrips);
     }
@@ -58,10 +58,10 @@ public partial class GameDataCanaryTests
     {
         var store = fixture.Store();
 
-        var item = store.GetItem(26745);
-        Assert.NotNull(item?.Usage?.TreasureMap);
+        var details = store.GetItemDetails(26745);
+        Assert.NotNull(details.Usage?.TreasureMap);
 
-        var map = item.Usage.TreasureMap;
+        var map = details.Usage.TreasureMap;
         Assert.Equal(8, map.PartySize);
         Assert.Equal(6, map.Zones.Count);
         Assert.All(map.Zones, z => Assert.Equal(8, z.SpotCount));
@@ -69,14 +69,44 @@ public partial class GameDataCanaryTests
         Assert.Contains(map.Zones, z => z.ZoneName == "The Tempest");
     }
 
-    // Checks the Materia sheet reverse (stat name + per-grade value).
+    // Checks the Materia sheet read (stat name + per-grade value).
     [Fact]
     public void SavageAimMateriaNineCarriesItsMateriaTag()
     {
         var store = fixture.Store();
 
         var item = store.GetItem(33919);
-        Assert.NotNull(item?.Usage);
-        Assert.Equal("Critical Hit +12", item.Usage.MateriaTag);
+        Assert.NotNull(item);
+        Assert.Equal("Critical Hit +12", item.MateriaTag);
+    }
+
+    // The store only scans the Materia sheet for items in the Materia UI
+    // category (156 of 156 at 7.3). If a patch files a materia elsewhere, its
+    // tag would silently vanish; this walks every tagged item to catch that.
+    [Fact]
+    public void EveryMateriaSheetItemCarriesItsTag()
+    {
+        var store = fixture.Store();
+        var materiaSheet = fixture.GameData!.GetExcelSheet<Lumina.Excel.Sheets.Materia>()!;
+
+        var tagged = 0;
+        foreach (var materia in materiaSheet)
+        {
+            if (materia.BaseParam.ValueNullable is not { Name.IsEmpty: false })
+                continue;
+
+            for (var i = 0; i < materia.Item.Count && i < materia.Value.Count; i++)
+            {
+                if (materia.Item[i].RowId == 0 || materia.Value[i] == 0)
+                    continue;
+
+                var item = store.GetItem(materia.Item[i].RowId);
+                Assert.NotNull(item);
+                Assert.False(item.MateriaTag.Length == 0, $"{item.Name} lost its materia tag");
+                tagged++;
+            }
+        }
+
+        Assert.True(tagged > 100, $"only {tagged} tagged materia - the Materia sheet read broke");
     }
 }

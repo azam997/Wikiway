@@ -1,13 +1,12 @@
 namespace Wikiway.Core.Models;
 
-// What an item is used for. MateriaTag is "Critical Hit +12" style text, empty
-// for non-materia.
+// What an item is used for. The materia stat lives on ItemEntity, because the
+// collapsed row shows it.
 public sealed record ItemUsage(
     int UsedInRecipes,
     IReadOnlyList<DeliverySource> Deliveries,
     IReadOnlyList<CollectableTurnIn> CollectableTurnIns,
-    TreasureMapInfo? TreasureMap,
-    string MateriaTag);
+    TreasureMapInfo? TreasureMap);
 
 public sealed record DeliverySource(string NpcName, QuestLink? UnlockQuest);
 

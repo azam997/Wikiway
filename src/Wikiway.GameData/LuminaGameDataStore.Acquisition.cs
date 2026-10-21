@@ -3,72 +3,21 @@ using Wikiway.Core.Models;
 
 namespace Wikiway.GameData;
 
-// Item acquisition: turns the reverse indexes in .AcquisitionIndex.cs into
-// the sources listed in an item card's ACQUISITION block. Only what the sheets
-// state is listed; duty drops and treasure coffers aren't in the client data,
-// so the wiki covers those.
+// Item acquisition: the sources listed in an item card's ACQUISITION block.
+// Built when the card is opened (GetItemDetails), never per search result.
+// Each source type scans its own sheet for rows naming the item; most of
+// those scans take well under a millisecond once the sheet is loaded. This
+// file has recipes, gathering, fishing and ventures; the shops (gil, special
+// and Grand Company) are in .Shops.cs. Only what the sheets state is listed;
+// duty drops and treasure coffers aren't in the client data, so the wiki
+// covers those.
 public sealed partial class LuminaGameDataStore
 {
     // Null when the sheets know no source at all.
     private ItemAcquisition? BuildAcquisition(uint itemRowId, uint gilPrice)
     {
-        var recipes = new List<RecipeSource>();
-        if (acquisitionIndex.Value.RecipesByItem.TryGetValue(itemRowId, out var recipeIds))
-        {
-            var sheet = Sheet<Recipe>();
-            foreach (var recipeId in recipeIds)
-            {
-                var recipe = sheet.GetRow(recipeId);
-                var ingredients = new List<ItemAmount>();
-                for (var i = 0; i < recipe.Ingredient.Count; i++)
-                {
-                    if (recipe.Ingredient[i].RowId != 0 &&
-                        recipe.Ingredient[i].ValueNullable is { } ingredient &&
-                        !ingredient.Name.IsEmpty)
-                        ingredients.Add(new ItemAmount(ingredient.Name.ExtractText(), recipe.AmountIngredient[i]));
-                }
-
-                recipes.Add(new RecipeSource(
-                    recipe.CraftType.ValueNullable?.Name.ExtractText() ?? "",
-                    recipe.RecipeLevelTable.ValueNullable?.ClassJobLevel ?? 0,
-                    ingredients,
-                    recipe.SecretRecipeBook.ValueNullable?.Name.ExtractText() ?? ""));
-            }
-        }
-
-        var vendors = new List<VendorSource>();
-        if (acquisitionIndex.Value.ShopsByItem.TryGetValue(itemRowId, out var shopIds))
-        {
-            var seen = new HashSet<(string Name, uint MapId, float X, float Y)>();
-            foreach (var shopId in shopIds)
-            {
-                if (!acquisitionIndex.Value.NpcsByShop.TryGetValue(shopId, out var npcIds))
-                    continue;
-
-                foreach (var npcId in npcIds)
-                {
-                    var resident = Sheet<ENpcResident>().GetRowOrDefault(npcId);
-                    if (resident == null || resident.Value.Singular.IsEmpty)
-                        continue;
-
-                    var name = TitleCase(resident.Value.Singular.ExtractText());
-                    var location = FindLocation(npcId);
-                    var key = location is { } loc
-                        ? (name.ToLowerInvariant(), loc.MapId, MathF.Round(loc.MapX, 1), MathF.Round(loc.MapY, 1))
-                        : (name.ToLowerInvariant(), 0u, 0f, 0f);
-                    if (seen.Add(key))
-                        vendors.Add(new VendorSource(name, location, gilPrice));
-                }
-            }
-
-            // Housing-district copies have no Level row; hide them when a
-            // located copy of the same vendor exists.
-            var located = vendors.Where(v => v.Location != null)
-                .Select(v => v.NpcName)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            vendors.RemoveAll(v => v.Location == null && located.Contains(v.NpcName));
-        }
-
+        var recipes = BuildRecipes(itemRowId);
+        var vendors = BuildVendors(itemRowId, gilPrice);
         var exchanges = BuildExchanges(itemRowId);
         var gathering = BuildGathering(itemRowId);
         var fishing = BuildFishing(itemRowId);
@@ -82,77 +31,59 @@ public sealed partial class LuminaGameDataStore
             : new ItemAcquisition(recipes, vendors, exchanges, gathering, fishing, sealVendors, ventures, fishingNote);
     }
 
-    // Special-shop exchanges (tomestones, scrips, item trades): one line per
-    // shop and NPC, deduplicated by shop name and NPC position.
-    private List<ExchangeSource> BuildExchanges(uint itemRowId)
+    // Recipes whose result is the item, with ingredients and master book.
+    private List<RecipeSource> BuildRecipes(uint itemRowId)
     {
-        var exchanges = new List<ExchangeSource>();
-        if (!acquisitionIndex.Value.SpecialShopsByItem.TryGetValue(itemRowId, out var shopIds))
-            return exchanges;
-
-        var seen = new HashSet<(string Shop, string Npc, uint MapId, float X, float Y)>();
-        foreach (var shopId in shopIds)
+        var recipes = new List<RecipeSource>();
+        foreach (var recipe in Sheet<Recipe>())
         {
-            var shop = Sheet<SpecialShop>().GetRowOrDefault(shopId);
-            if (shop == null || !acquisitionIndex.Value.NpcsBySpecialShop.TryGetValue(shopId, out var npcIds))
+            if (recipe.ItemResult.RowId != itemRowId)
                 continue;
 
-            var costs = BuildExchangeCosts(shop.Value, itemRowId);
-            if (costs.Count == 0)
-                continue;
-
-            var shopName = shop.Value.Name.ExtractText();
-            foreach (var npcId in npcIds)
+            var ingredients = new List<ItemAmount>();
+            for (var i = 0; i < recipe.Ingredient.Count; i++)
             {
-                var resident = Sheet<ENpcResident>().GetRowOrDefault(npcId);
-                if (resident == null || resident.Value.Singular.IsEmpty)
-                    continue;
-
-                var npcName = TitleCase(resident.Value.Singular.ExtractText());
-                var location = FindLocation(npcId);
-                var key = location is { } loc
-                    ? (shopName.ToLowerInvariant(), npcName.ToLowerInvariant(), loc.MapId, MathF.Round(loc.MapX, 1), MathF.Round(loc.MapY, 1))
-                    : (shopName.ToLowerInvariant(), npcName.ToLowerInvariant(), 0u, 0f, 0f);
-                if (seen.Add(key))
-                    exchanges.Add(new ExchangeSource(shopName.Length > 0 ? shopName : npcName, npcName, location, costs));
-            }
-        }
-
-        return exchanges;
-    }
-
-    private static List<IReadOnlyList<ItemAmount>> BuildExchangeCosts(SpecialShop shop, uint itemRowId)
-    {
-        // Each shop entry is one offer; its cost slots are all required together.
-        // Tomestone stand-in slots resolve to no named item and are skipped.
-        var costs = new List<IReadOnlyList<ItemAmount>>();
-        foreach (var entry in shop.Item)
-        {
-            if (!entry.ReceiveItems.Any(r => r.Item.RowId == itemRowId))
-                continue;
-
-            var parts = new List<ItemAmount>();
-            foreach (var cost in entry.ItemCosts)
-            {
-                if (cost.ItemCost.ValueNullable is { } costItem && !costItem.Name.IsEmpty)
-                    parts.Add(new ItemAmount(costItem.Name.ExtractText(), cost.CurrencyCost));
+                if (recipe.Ingredient[i].RowId != 0 &&
+                    recipe.Ingredient[i].ValueNullable is { } ingredient &&
+                    !ingredient.Name.IsEmpty)
+                    ingredients.Add(new ItemAmount(ingredient.Name.ExtractText(), recipe.AmountIngredient[i]));
             }
 
-            if (parts.Count > 0)
-                costs.Add(parts);
+            recipes.Add(new RecipeSource(
+                recipe.CraftType.ValueNullable?.Name.ExtractText() ?? "",
+                recipe.RecipeLevelTable.ValueNullable?.ClassJobLevel ?? 0,
+                ingredients,
+                recipe.SecretRecipeBook.ValueNullable?.Name.ExtractText() ?? ""));
         }
 
-        return costs;
+        return recipes;
     }
 
     // Gathering nodes (mining, logging, harvesting, quarrying) with their
     // level, map position and, for timed nodes, the Eorzea-time window.
+    // GatheringItem sits between the item and the node templates
+    // (GatheringPointBase) that list it.
     private List<GatheringSource> BuildGathering(uint itemRowId)
     {
         var gathering = new List<GatheringSource>();
-        if (!acquisitionIndex.Value.GatheringBasesByItem.TryGetValue(itemRowId, out var baseIds))
+        var gatheringItemIds = new HashSet<uint>();
+        foreach (var row in Sheet<GatheringItem>())
+        {
+            if (row.Item.RowId == itemRowId)
+                gatheringItemIds.Add(row.RowId);
+        }
+
+        if (gatheringItemIds.Count == 0)
             return gathering;
 
+        var baseIds = new List<uint>();
+        foreach (var pointBase in Sheet<GatheringPointBase>())
+        {
+            if (pointBase.Item.Any(entry => gatheringItemIds.Contains(entry.RowId)))
+                baseIds.Add(pointBase.RowId);
+        }
+
+        var pointByBase = FirstPlacedPoints(baseIds);
         var seen = new HashSet<(string Type, string Zone, float X, float Y, string Window)>();
         foreach (var baseId in baseIds)
         {
@@ -160,9 +91,10 @@ public sealed partial class LuminaGameDataStore
             if (pointBase == null)
                 continue;
 
+            var pointId = pointByBase.GetValueOrDefault(baseId);
             var nodeType = pointBase.Value.GatheringType.ValueNullable?.Name.ExtractText() ?? "";
-            var location = GatheringLocation(baseId);
-            var window = GatheringTimeWindow(baseId);
+            var location = GatheringLocation(baseId, pointId);
+            var window = GatheringTimeWindow(pointId);
             var key = location is { } loc
                 ? (nodeType, loc.ZoneName, MathF.Round(loc.MapX, 1), MathF.Round(loc.MapY, 1), window)
                 : (nodeType, "", 0f, 0f, window);
@@ -173,14 +105,53 @@ public sealed partial class LuminaGameDataStore
         return gathering;
     }
 
+    // Node template -> the first placed GatheringPoint using it, which carries
+    // the zone.
+    private Dictionary<uint, uint> FirstPlacedPoints(List<uint> baseIds)
+    {
+        var lookup = new Dictionary<uint, uint>();
+        foreach (var point in Sheet<GatheringPoint>())
+        {
+            if (point.GatheringPointBase.RowId != 0 && point.TerritoryType.RowId != 0 &&
+                point.PlaceName.RowId != 0 && baseIds.Contains(point.GatheringPointBase.RowId))
+                lookup.TryAdd(point.GatheringPointBase.RowId, point.RowId);
+        }
+
+        return lookup;
+    }
+
+    // Every item some gathering node yields. Only the name index uses this, to
+    // tag those names Gatherable, so it's built once while the index is.
+    private HashSet<uint> GatherableItemIds()
+    {
+        var itemByGatheringItem = new Dictionary<uint, uint>();
+        foreach (var row in Sheet<GatheringItem>())
+        {
+            if (row.Item.RowId != 0)
+                itemByGatheringItem.TryAdd(row.RowId, row.Item.RowId);
+        }
+
+        var items = new HashSet<uint>();
+        foreach (var pointBase in Sheet<GatheringPointBase>())
+        {
+            foreach (var entry in pointBase.Item)
+            {
+                if (itemByGatheringItem.TryGetValue(entry.RowId, out var itemId))
+                    items.Add(itemId);
+            }
+        }
+
+        return items;
+    }
+
     // "Unspoiled · 9:00-12:00 ET" or "Ephemeral · 16:00-20:00 ET"; empty for
     // nodes that are always up.
-    private string GatheringTimeWindow(uint baseRowId)
+    private string GatheringTimeWindow(uint pointRowId)
     {
-        if (!acquisitionIndex.Value.GatheringPointByBase.TryGetValue(baseRowId, out var pointId))
+        if (pointRowId == 0)
             return "";
 
-        var transient = Sheet<GatheringPointTransient>().GetRowOrDefault(pointId);
+        var transient = Sheet<GatheringPointTransient>().GetRowOrDefault(pointRowId);
         if (transient == null)
             return "";
 
@@ -211,12 +182,12 @@ public sealed partial class LuminaGameDataStore
 
     // ExportedGatheringPoint holds the node's world position, converted to map
     // coordinates like any Level row.
-    private MapLocation? GatheringLocation(uint baseRowId)
+    private MapLocation? GatheringLocation(uint baseRowId, uint pointRowId)
     {
-        if (!acquisitionIndex.Value.GatheringPointByBase.TryGetValue(baseRowId, out var pointId))
+        if (pointRowId == 0)
             return null;
 
-        var point = Sheet<GatheringPoint>().GetRowOrDefault(pointId);
+        var point = Sheet<GatheringPoint>().GetRowOrDefault(pointRowId);
         var territory = point?.TerritoryType.ValueNullable;
         var map = territory?.Map.ValueNullable;
         var exported = Sheet<ExportedGatheringPoint>().GetRowOrDefault(baseRowId);
@@ -229,40 +200,57 @@ public sealed partial class LuminaGameDataStore
     }
 
     // Fishing holes and spearfishing spots. Both sheets store map-image pixels
-    // (0-2048), not world units.
+    // (0-2048), not world units. Spots without a zone or place name are
+    // skipped.
     private List<FishingSource> BuildFishing(uint itemRowId)
     {
         var fishing = new List<FishingSource>();
-        if (acquisitionIndex.Value.FishingSpotsByItem.TryGetValue(itemRowId, out var spotIds))
+        foreach (var spot in Sheet<FishingSpot>())
         {
-            foreach (var spotId in spotIds)
-            {
-                var spot = Sheet<FishingSpot>().GetRowOrDefault(spotId);
-                if (spot == null || spot.Value.PlaceName.ValueNullable is not { } place || place.Name.IsEmpty)
-                    continue;
+            if (spot.TerritoryType.RowId == 0 || spot.PlaceName.RowId == 0 ||
+                !spot.Item.Any(item => item.RowId == itemRowId))
+                continue;
 
-                fishing.Add(new FishingSource(
-                    place.Name.ExtractText(),
-                    spot.Value.GatheringLevel,
-                    FishingLocation(spot.Value.TerritoryType.ValueNullable, spot.Value.X, spot.Value.Z),
-                    Spearfishing: false));
-            }
+            if (spot.PlaceName.ValueNullable is not { } place || place.Name.IsEmpty)
+                continue;
+
+            fishing.Add(new FishingSource(
+                place.Name.ExtractText(),
+                spot.GatheringLevel,
+                FishingLocation(spot.TerritoryType.ValueNullable, spot.X, spot.Z),
+                Spearfishing: false));
         }
 
-        if (acquisitionIndex.Value.SpearfishingSpotsByItem.TryGetValue(itemRowId, out var notebookIds))
+        // Spearfishing bases fill their GatheringPointBase.Item slots with
+        // SpearfishingItem row ids (20000+), disjoint from GatheringItem ids,
+        // so the gathering scan above never sees them.
+        var spearRows = new HashSet<uint>();
+        foreach (var row in Sheet<SpearfishingItem>())
         {
-            foreach (var notebookId in notebookIds)
-            {
-                var spot = Sheet<SpearfishingNotebook>().GetRowOrDefault(notebookId);
-                if (spot == null || spot.Value.PlaceName.ValueNullable is not { } place || place.Name.IsEmpty)
-                    continue;
+            if (row.Item.RowId == itemRowId)
+                spearRows.Add(row.RowId);
+        }
 
-                fishing.Add(new FishingSource(
-                    place.Name.ExtractText(),
-                    spot.Value.GatheringLevel,
-                    FishingLocation(spot.Value.TerritoryType.ValueNullable, spot.Value.X, spot.Value.Y),
-                    Spearfishing: true));
-            }
+        if (spearRows.Count == 0)
+            return fishing;
+
+        foreach (var spot in Sheet<SpearfishingNotebook>())
+        {
+            if (spot.TerritoryType.RowId == 0 || spot.PlaceName.RowId == 0)
+                continue;
+
+            var pointBase = Sheet<GatheringPointBase>().GetRowOrDefault(spot.GatheringPointBase.RowId);
+            if (pointBase == null || !pointBase.Value.Item.Any(entry => spearRows.Contains(entry.RowId)))
+                continue;
+
+            if (spot.PlaceName.ValueNullable is not { } place || place.Name.IsEmpty)
+                continue;
+
+            fishing.Add(new FishingSource(
+                place.Name.ExtractText(),
+                spot.GatheringLevel,
+                FishingLocation(spot.TerritoryType.ValueNullable, spot.X, spot.Y),
+                Spearfishing: true));
         }
 
         return fishing;
@@ -281,58 +269,17 @@ public sealed partial class LuminaGameDataStore
             MapCoordConverter.FromMapPixel(pixelY, map.Value.SizeFactor));
     }
 
-    // The fisher's log lore text, shown under the fishing lines.
+    // The fisher's log lore text (FishParameter), shown under the fishing
+    // lines.
     private string FishNote(uint itemRowId)
     {
-        if (!acquisitionIndex.Value.FishNoteByItem.TryGetValue(itemRowId, out var paramId))
-            return "";
-
-        var row = Sheet<FishParameter>().GetRowOrDefault(paramId);
-        return row?.Text.ExtractText() ?? "";
-    }
-
-    // Grand Company quartermasters selling the item for seals, with the minimum
-    // rank when there is one.
-    private List<SealVendorSource> BuildSealVendors(uint itemRowId)
-    {
-        var vendors = new List<SealVendorSource>();
-        if (!acquisitionIndex.Value.SealOffersByItem.TryGetValue(itemRowId, out var offers))
-            return vendors;
-
-        var seen = new HashSet<GcSealOffer>();
-        foreach (var offer in offers)
+        foreach (var row in Sheet<FishParameter>())
         {
-            if (!seen.Add(offer) || !acquisitionIndex.Value.QuartermasterByCompany.TryGetValue(offer.GrandCompany, out var npcId))
-                continue;
-
-            var resident = Sheet<ENpcResident>().GetRowOrDefault(npcId);
-            if (resident == null || resident.Value.Singular.IsEmpty)
-                continue;
-
-            vendors.Add(new SealVendorSource(
-                TitleCase(resident.Value.Singular.ExtractText()),
-                FindLocation(npcId),
-                offer.Seals,
-                RankName(offer.GrandCompany, offer.Rank)));
+            if (row.Item.RowId == itemRowId && !row.Text.IsEmpty)
+                return row.Text.ExtractText();
         }
 
-        return vendors;
-    }
-
-    // Rank display names live in per-company text sheets; the male and female
-    // variants carry the same strings. Rank 1 means any member, not worth a label.
-    private string RankName(uint grandCompany, uint rankRowId)
-    {
-        if (rankRowId <= 1)
-            return "";
-
-        return grandCompany switch
-        {
-            1 => Sheet<GCRankLimsaMaleText>().GetRowOrDefault(rankRowId)?.Singular.ExtractText() ?? "",
-            2 => Sheet<GCRankGridaniaMaleText>().GetRowOrDefault(rankRowId)?.Singular.ExtractText() ?? "",
-            3 => Sheet<GCRankUldahMaleText>().GetRowOrDefault(rankRowId)?.Singular.ExtractText() ?? "",
-            _ => "",
-        };
+        return "";
     }
 
     // Retainer ventures that bring back the item, with the quantity range a
@@ -340,12 +287,32 @@ public sealed partial class LuminaGameDataStore
     private List<VentureSource> BuildVentures(uint itemRowId)
     {
         var ventures = new List<VentureSource>();
-        if (!acquisitionIndex.Value.VenturesByItem.TryGetValue(itemRowId, out var normalIds))
+        var normalIds = new List<uint>();
+        foreach (var normal in Sheet<RetainerTaskNormal>())
+        {
+            if (normal.Item.RowId == itemRowId)
+                normalIds.Add(normal.RowId);
+        }
+
+        if (normalIds.Count == 0)
             return ventures;
+
+        // RetainerTask.Task points at RetainerTaskNormal (or RetainerTaskRandom
+        // for the exploration ventures, which never award a specific item).
+        // The lowest task row is the one shown.
+        var taskByNormal = new Dictionary<uint, uint>();
+        foreach (var task in Sheet<RetainerTask>())
+        {
+            if (task.IsRandom || task.Task.RowId == 0 || !normalIds.Contains(task.Task.RowId))
+                continue;
+
+            if (!taskByNormal.TryGetValue(task.Task.RowId, out var existing) || task.RowId < existing)
+                taskByNormal[task.Task.RowId] = task.RowId;
+        }
 
         foreach (var normalId in normalIds)
         {
-            if (!acquisitionIndex.Value.VentureTaskByNormal.TryGetValue(normalId, out var taskId))
+            if (!taskByNormal.TryGetValue(normalId, out var taskId))
                 continue;
 
             var task = Sheet<RetainerTask>().GetRowOrDefault(taskId);

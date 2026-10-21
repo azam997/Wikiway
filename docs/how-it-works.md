@@ -29,7 +29,7 @@ Everything that touches the game runs on the main thread: drawing, commands, rig
 
 Clicking a link inside the results doesn't start a search right away, because that would change the list while it's being drawn. It's queued and runs on the next frame (`queuedNavigation` in `MainWindow`).
 
-Some lookups need to scan a whole sheet. Ex: which recipes make an item. This is cached on load (`WarmAll`), so searches and right-click menus don't wait on the request.
+Some lookups need to scan a whole sheet. Ex: which recipes make an item. Those run on a background task when you open an item's card, not for every search result. Two lookups are kept after their first use, because every result of their kind needs them before it can be shown: where each NPC stands, and which quest unlocks each duty.
 
 ## Game data
 
@@ -40,7 +40,7 @@ What was found goes in a comment next to the code that reads the column. Most of
 `LuminaGameDataStore` is split into one file per feature. The canary tests use the same names.
 
 - Items, equipment, food: `.Items.cs`
-- Where to get an item: `.Acquisition.cs`, `.AcquisitionIndex.cs`
+- Where to get an item: `.Acquisition.cs`, `.Shops.cs`
 - What an item is used for: `.Usage.cs`
 - Mounts, minions, orchestrion rolls, Triple Triad cards, emotes: `.Collections.cs`
 - Quests and unlock chains: `.Quests.cs`
@@ -90,7 +90,7 @@ I'd start with `Plugin.cs`, then `QueryOrchestrator.cs`, then `GameIntegration/`
 
 Most of the line count is in `GameData/` and `Windows/`.
 
-- GameData is mostly reading sheet rows into records, plus a few lookup tables (Ex: which recipes use an item) that get built in the background when the plugin loads.
+- GameData is mostly reading sheet rows into records. Where to get an item and what it's used for are scanned when its card is opened. Only two lookup tables are kept: NPC positions and duty unlock quests.
 - The Windows files are mostly ImGui layout (probably a bit overboard on being decorative). The exception is `MainWindow.cs`, which starts each search on a background task and picks up the result.
 
 The parts I reviewed the hardest are threading, the network code, the game memory reads, and the Teleporter IPC call.

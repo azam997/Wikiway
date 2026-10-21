@@ -53,7 +53,7 @@ public sealed partial class LuminaGameDataStore
 
         return new HuntMarkEntity(rowId, TitleCase(mark.Singular.ExtractText()), RankLetter(row.Value.Rank))
         {
-            ZoneName = markZoneByBNpcName.Value.GetValueOrDefault(row.Value.BNpcName.RowId, ""),
+            ZoneName = MarkZone(row.Value.BNpcName.RowId),
         };
     }
 
@@ -65,23 +65,22 @@ public sealed partial class LuminaGameDataStore
         _ => "",
     };
 
-    private Dictionary<uint, string> BuildMarkZoneLookup()
+    private string MarkZone(uint bnpcNameRowId)
     {
         // MobHuntTarget is the hunt-bill sheet, so only billed marks (the B
         // ranks) appear; their PlaceName column holds the log sub-zone and is
         // empty for marks, so the zone comes from the Map row instead.
-        var lookup = new Dictionary<uint, string>();
         foreach (var target in Sheet<MobHuntTarget>())
         {
-            if (target.Name.RowId == 0)
+            if (target.Name.RowId == 0 || target.Name.RowId != bnpcNameRowId)
                 continue;
 
             var zone = target.Map.ValueNullable?.PlaceName.ValueNullable?.Name.ExtractText() ?? "";
             if (zone.Length > 0)
-                lookup.TryAdd(target.Name.RowId, zone);
+                return zone;
         }
 
-        return lookup;
+        return "";
     }
 
     // A zone's quest-gated aether currents as quest steps with start locations.

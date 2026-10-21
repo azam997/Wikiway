@@ -27,8 +27,13 @@ public interface IGameDataStore
 
     DutyEntity? FindDutyByTerritory(uint territoryTypeId);
 
-    // Name-only reads for game-thread callbacks (context menu, territory
-    // change): they must never trigger the heavy lazy index builds above.
+    // Scans several whole sheets (up to ~100 ms for an item sold in every kind
+    // of shop), so the UI calls it on a background task when an item card is
+    // opened.
+    ItemDetails GetItemDetails(uint itemRowId);
+
+    // Light reads for game-thread callbacks (context menu, territory change):
+    // a single row, or one pass over the small duty sheet.
     string? GetItemName(uint rowId);
     string? GetNpcName(uint rowId);
     string? FindSoloDutyName(uint territoryTypeId);

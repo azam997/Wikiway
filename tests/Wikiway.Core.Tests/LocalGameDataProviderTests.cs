@@ -80,6 +80,7 @@ public class LocalGameDataProviderTests
         public FateEntity? GetFate(uint rowId) => null;
         public LeveEntity? GetLeve(uint rowId) => null;
         public DutyEntity? FindDutyByTerritory(uint territoryTypeId) => null;
+        public ItemDetails GetItemDetails(uint itemRowId) => new(null, null);
         public string? GetItemName(uint rowId) => Find<ItemEntity>(rowId)?.Name;
         public string? GetNpcName(uint rowId) => Find<NpcEntity>(rowId)?.Name;
         public string? FindSoloDutyName(uint territoryTypeId) => null;

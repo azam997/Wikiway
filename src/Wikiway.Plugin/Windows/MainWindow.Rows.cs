@@ -43,7 +43,7 @@ public partial class MainWindow
         var gearTag = plugin.Configuration.ShowEquipmentStats && item.Equipment is { } gear
             ? $"ilvl {gear.ItemLevel} · Lv. {gear.EquipLevel}"
             : "";
-        var materiaTag = plugin.Configuration.ShowItemUsage && item.Usage is { } usage ? usage.MateriaTag : "";
+        var materiaTag = plugin.Configuration.ShowItemUsage ? item.MateriaTag : "";
 
         using var row = IconRow(item.Icon);
         RowHeader(card, item.Name, Label("Item", item.Category), gearTag, materiaTag);

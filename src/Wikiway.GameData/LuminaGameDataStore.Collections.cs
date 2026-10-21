@@ -5,7 +5,7 @@ namespace Wikiway.GameData;
 
 // Collectibles: mounts, minions, orchestrion rolls, Triple Triad cards and
 // emotes. Each card links back to the item that teaches it, found by scanning
-// item actions.
+// the Item sheet's item actions (up to ~2 ms per card once loaded).
 public sealed partial class LuminaGameDataStore
 {
     // ItemAction type discriminators (ItemAction.Action.RowId); Data[0] names
@@ -19,50 +19,24 @@ public sealed partial class LuminaGameDataStore
     private const uint ItemActionTripleTriadCard = 3357;
     private const uint ItemActionUnlockBit = 2633;
 
-    private sealed record ItemActionTeachers(
-        Dictionary<uint, uint> ByMount,
-        Dictionary<uint, uint> ByMinion,
-        Dictionary<uint, uint> ByOrchestrion,
-        Dictionary<uint, uint> ByCard,
-        Dictionary<uint, uint> ByUnlockBit);
-
-    // One scan of the Item sheet finds the item that teaches each mount,
-    // minion, roll, card and emote.
-    private ItemActionTeachers BuildTeacherLookup()
+    // The first item whose ItemAction teaches the given row. The card shows
+    // its name and icon; its acquisition sources load when the card is opened,
+    // like any item's.
+    private ItemEntity? TeachingItem(uint actionType, uint taughtRowId)
     {
-        var lookup = new ItemActionTeachers([], [], [], [], []);
         foreach (var item in Sheet<Item>())
         {
-            if (item.Name.IsEmpty || item.ItemAction.ValueNullable is not { } action)
+            if (item.ItemAction.RowId == 0 || item.Name.IsEmpty ||
+                item.ItemAction.ValueNullable is not { } action || action.Action.RowId != actionType)
                 continue;
 
-            switch (action.Action.RowId)
-            {
-                case ItemActionMount:
-                    lookup.ByMount.TryAdd(action.Data[0], item.RowId);
-                    break;
-                case ItemActionMinion:
-                    lookup.ByMinion.TryAdd(action.Data[0], item.RowId);
-                    break;
-                case ItemActionOrchestrion:
-                    lookup.ByOrchestrion.TryAdd(item.AdditionalData.RowId, item.RowId);
-                    break;
-                case ItemActionTripleTriadCard:
-                    lookup.ByCard.TryAdd(action.Data[0], item.RowId);
-                    break;
-                case ItemActionUnlockBit:
-                    lookup.ByUnlockBit.TryAdd(action.Data[0], item.RowId);
-                    break;
-            }
+            var taught = actionType == ItemActionOrchestrion ? item.AdditionalData.RowId : action.Data[0];
+            if (taught == taughtRowId)
+                return GetItem(item.RowId);
         }
 
-        return lookup;
+        return null;
     }
-
-    // The teaching item as a full ItemEntity, so collection cards can reuse its
-    // acquisition sources.
-    private ItemEntity? TeachingItem(Dictionary<uint, uint> lookup, uint rowId) =>
-        lookup.TryGetValue(rowId, out var itemId) ? GetItem(itemId) : null;
 
     public MountEntity? GetMount(uint rowId)
     {
@@ -76,7 +50,7 @@ public sealed partial class LuminaGameDataStore
         return new MountEntity(rowId, TitleCase(row.Value.Singular.ExtractText()), row.Value.Icon)
         {
             Description = transient?.DescriptionEnhanced.ExtractText() ?? "",
-            TeachingItem = TeachingItem(teachers.Value.ByMount, rowId),
+            TeachingItem = TeachingItem(ItemActionMount, rowId),
         };
     }
 
@@ -99,7 +73,7 @@ public sealed partial class LuminaGameDataStore
                     row.Value.Cost,
                     transient.Value.SpecialActionName.ExtractText())
                 : null,
-            TeachingItem = TeachingItem(teachers.Value.ByMinion, rowId),
+            TeachingItem = TeachingItem(ItemActionMinion, rowId),
         };
     }
 
@@ -116,7 +90,7 @@ public sealed partial class LuminaGameDataStore
             row.Value.Description.ExtractText(),
             ui?.OrchestrionCategory.ValueNullable?.Name.ExtractText() ?? "")
         {
-            TeachingItem = TeachingItem(teachers.Value.ByOrchestrion, rowId),
+            TeachingItem = TeachingItem(ItemActionOrchestrion, rowId),
         };
     }
 
@@ -174,7 +148,7 @@ public sealed partial class LuminaGameDataStore
             NpcName = npcName,
             NpcLocation = npcLocation,
             DutyName = dutyName,
-            TeachingItem = TeachingItem(teachers.Value.ByCard, rowId),
+            TeachingItem = TeachingItem(ItemActionTripleTriadCard, rowId),
         };
     }
 
@@ -212,7 +186,7 @@ public sealed partial class LuminaGameDataStore
             row.Value.EmoteCategory.ValueNullable?.Name.ExtractText() ?? "")
         {
             UnlockQuest = unlockQuest,
-            TeachingItem = link == 0 ? null : TeachingItem(teachers.Value.ByUnlockBit, link),
+            TeachingItem = link == 0 ? null : TeachingItem(ItemActionUnlockBit, link),
         };
     }
 }

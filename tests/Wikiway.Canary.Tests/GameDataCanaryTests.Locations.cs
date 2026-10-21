@@ -19,10 +19,10 @@ public partial class GameDataCanaryTests
             .FirstOrDefault(n => n.Kind == EntityKind.Gatherable && n.Name == "iron ore");
         Assert.NotNull(ironOre);
 
-        var item = store.GetItem(ironOre.RowId);
-        Assert.NotNull(item?.Acquisition);
+        var details = store.GetItemDetails(ironOre.RowId);
+        Assert.NotNull(details.Acquisition);
 
-        var node = item.Acquisition.Gathering.First(g =>
+        var node = details.Acquisition.Gathering.First(g =>
             g.Location is { } loc && loc.ZoneName.Contains("Western Thanalan", StringComparison.OrdinalIgnoreCase));
         var near = node.Location!.Aetheryte;
         Assert.NotNull(near);

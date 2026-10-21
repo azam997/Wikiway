@@ -8,9 +8,6 @@ internal sealed class LazyLookup<T>(Func<T> build) where T : class
     private readonly Lock gate = new();
     private T? value;
 
-    // Never builds. For game-thread callers that must not stall on a scan.
-    public T? ValueIfBuilt => value;
-
     public T Value
     {
         get

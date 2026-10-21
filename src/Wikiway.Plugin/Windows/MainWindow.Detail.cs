@@ -16,10 +16,9 @@ public partial class MainWindow
     private bool HasDetail(EntityCardResult card) =>
         !IsSpoilerGated(card)
         && (card.WikiSections.Count > 0
-            || card.Entity is ItemEntity { Acquisition: not null }
-            || (plugin.Configuration.ShowEquipmentStats
-                && card.Entity is ItemEntity { Equipment: not null } or ItemEntity { Food: not null })
-            || (plugin.Configuration.ShowItemUsage && card.Entity is ItemEntity { Usage: not null })
+            // Whether an item has sources isn't known until its card is
+            // opened, so every item card can expand.
+            || card.Entity is ItemEntity
             || ShowNpcTabs(card)
             || card.Entity is MountEntity { TeachingItem: not null } or MountEntity { Description.Length: > 0 }
                 or MinionEntity { TeachingItem: not null } or MinionEntity { BattleStats: not null }
@@ -88,15 +87,8 @@ public partial class MainWindow
         if (plugin.Configuration.ShowEquipmentStats && card.Entity is ItemEntity { Food: { } food })
             DrawConsumable(food);
 
-        if (card.Entity is ItemEntity { Acquisition: { } itemAcquisition })
-        {
-            ImGui.Spacing();
-            DetailLabel("ACQUISITION");
-            DrawAcquisitionSources(card.Entity.RowId, itemAcquisition);
-        }
-
-        if (plugin.Configuration.ShowItemUsage && card.Entity is ItemEntity { Usage: { } usage })
-            DrawUsage(usage);
+        if (card.Entity is ItemEntity item)
+            DrawItemSources(card, item);
 
         DrawCollectionDetail(card);
 

@@ -72,7 +72,10 @@ public partial class MainWindow : Window, IDisposable
         session.Dispose();
     }
 
-    internal Task? PendingSearch => session.Pending;
+    // The running search and any item-detail loads, for Plugin.Dispose to
+    // wait on.
+    internal IEnumerable<Task> PendingTasks =>
+        session.Pending is { } search ? [search, .. session.ItemDetails.Values] : session.ItemDetails.Values;
 
     private void OnLogout(int type, int code) => revealedSpoilers.Clear();
 
@@ -437,6 +440,7 @@ public partial class MainWindow : Window, IDisposable
             session.ExpandedRows.Clear();
             session.ExpandedChains.Clear();
             session.ExpandedScenes.Clear();
+            session.ItemDetails.Clear();
             // Grouping cutscene appearances here keeps the per-frame scene
             // tab from re-running GroupBy on every draw.
             session.SceneGroups.Clear();
